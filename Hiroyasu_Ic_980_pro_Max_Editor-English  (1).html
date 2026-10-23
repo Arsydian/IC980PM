@@ -1,0 +1,1256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hiroyasu IC-980 Pro Max - YSF & CSV Editor by Ranke YU6RDR</title>
+<style>
+:root {
+  --bg: #12151c; --card: #1c212c; --bd: #2e3646; --fg: #e2e8f0; --mut: #94a3b8;
+  --ac: #2563eb; --ac-h: #1d4ed8; --sel: #1e293b; --warn: #ef4444; --succ: #22c55e;
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.4 Arial, sans-serif; }
+h1 { font-size: 20px; margin: 0 0 12px; }
+.card { background: var(--card); border: 1px solid var(--bd); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+.btn-group { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+button, input[type="file"]::file-selector-button {
+  background: var(--ac); color: #fff; border: 0; border-radius: 6px; padding: 8px 14px;
+  font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.15s;
+}
+button:hover { background: var(--ac-h); }
+button.o { background: transparent; color: var(--mut); border: 1px solid var(--bd); }
+button.o:hover { background: var(--bd); color: #fff; }
+button.danger { background: var(--warn); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+.file-input { display: inline-flex; align-items: center; gap: 8px; border: 1px dashed var(--bd); padding: 6px 10px; border-radius: 6px; }
+#wrap { max-height: 65vh; overflow: auto; border: 1px solid var(--bd); border-radius: 6px; margin-top: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--bd); white-space: nowrap; }
+th { position: sticky; top: 0; background: #252d3d; z-index: 2; font-size: 12px; }
+th small { display: block; color: var(--mut); font-weight: normal; }
+tr.r { cursor: pointer; }
+tr.r:hover { background: #232b3b; }
+tr.sel { background: var(--sel) !important; border-left: 3px solid var(--ac); }
+input[type="text"], input[type="number"], input[type="search"], select {
+  background: #11141a; border: 1px solid var(--bd); color: var(--fg); padding: 4px 6px; border-radius: 4px; font-size: 12px;
+}
+select:disabled { opacity: 0.35; }
+input.nm { width: 150px; } input.fq { width: 105px; } input.of { width: 80px; }
+.msg { margin-top: 8px; font-size: 13px; font-weight: bold; }
+.err { color: var(--warn); }
+.succ { color: var(--succ); }
+.hint { color: var(--mut); font-size: 12px; margin-top: 6px; font-weight: normal; }
+.der { color: var(--mut); }
+
+th.gs, td.gs { border-left: 3px solid var(--ac); }
+input.cm { width: 120px; }
+
+th.gs, td.gs { border-left: 3px solid var(--ac); }
+input.cm { width: 120px; }
+tr.r.sel { background: #1e3a5f !important; box-shadow: inset 3px 0 0 var(--ac); }
+tr.r td:first-child { user-select: none; cursor: default; }
+#ctx { position: fixed; z-index: 60; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 270px; box-shadow: 0 8px 24px #000a; font-size: 13px; }
+#ctx[hidden], .modal[hidden] { display: none; }
+.mi { position: relative; display: flex; justify-content: space-between; gap: 22px; padding: 6px 14px; cursor: pointer; }
+.mi:hover { background: var(--ac); }
+.mi small { color: var(--mut); } .mi:hover small { color: #dbeafe; }
+.mi.dis { opacity: .4; cursor: default; } .mi.dis:hover { background: none; }
+.msep { height: 1px; background: var(--bd); margin: 4px 0; }
+.submenu { display: none; position: absolute; left: 100%; top: -5px; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 250px; box-shadow: 0 8px 24px #000a; }
+.mi.has:hover > .submenu { display: block; } .mi.dis > .submenu { display: none !important; }
+#ctx.left .submenu { left: auto; right: 100%; }
+.modal { position: fixed; inset: 0; background: #000a; z-index: 70; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; }
+.mbox { background: var(--card); border: 1px solid var(--bd); border-radius: 8px; width: min(980px, 100%); padding: 16px; }
+.mhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; font-weight: bold; font-size: 15px; }
+.props { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px 14px; }
+.props label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--mut); }
+.props input, .props select { width: 100% !important; }
+.hexgrid { font-family: Consolas, "Courier New", monospace; font-size: 13px; margin: 8px 0 12px; }
+.ho { display: inline-block; width: 30px; color: var(--mut); }
+.hb { display: inline-block; width: 26px; text-align: center; border-radius: 3px; }
+.hb.z { color: #4b5565; } .hb.k { background: #1e3a5f; color: #fff; } .hb.d { background: var(--warn) !important; color: #fff; }
+table.ft { width: auto; } table.ft td { padding: 3px 14px 3px 0; border-bottom: 1px solid var(--bd); }
+.dh { font-weight: bold; margin-top: 8px; }
+#mbody pre { max-height: 55vh; overflow: auto; background: #11141a; padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; }
+
+th.gs, td.gs { border-left: 3px solid var(--ac); }
+input.cm { width: 120px; }
+tr.r.sel { background: #1e3a5f !important; box-shadow: inset 3px 0 0 var(--ac); }
+tr.r td:first-child { user-select: none; cursor: default; }
+#ctx { position: fixed; z-index: 60; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 270px; box-shadow: 0 8px 24px #000a; font-size: 13px; }
+#ctx[hidden], .modal[hidden] { display: none; }
+.mi { position: relative; display: flex; justify-content: space-between; gap: 22px; padding: 6px 14px; cursor: pointer; }
+.mi:hover { background: var(--ac); }
+.mi small { color: var(--mut); } .mi:hover small { color: #dbeafe; }
+.mi.dis { opacity: .4; cursor: default; } .mi.dis:hover { background: none; }
+.msep { height: 1px; background: var(--bd); margin: 4px 0; }
+.submenu { display: none; position: absolute; left: 100%; top: -5px; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 250px; box-shadow: 0 8px 24px #000a; }
+.mi.has:hover > .submenu { display: block; } .mi.dis > .submenu { display: none !important; }
+#ctx.left .submenu { left: auto; right: 100%; }
+.modal { position: fixed; inset: 0; background: #000a; z-index: 70; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; }
+.mbox { background: var(--card); border: 1px solid var(--bd); border-radius: 8px; width: min(980px, 100%); padding: 16px; }
+.mhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; font-weight: bold; font-size: 15px; }
+.props { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px 14px; }
+.props label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--mut); }
+.props input, .props select { width: 100% !important; }
+.hexgrid { font-family: Consolas, "Courier New", monospace; font-size: 13px; margin: 8px 0 12px; }
+.ho { display: inline-block; width: 30px; color: var(--mut); }
+.hb { display: inline-block; width: 26px; text-align: center; border-radius: 3px; }
+.hb.z { color: #4b5565; } .hb.k { background: #1e3a5f; color: #fff; } .hb.d { background: var(--warn) !important; color: #fff; }
+table.ft { width: auto; } table.ft td { padding: 3px 14px 3px 0; border-bottom: 1px solid var(--bd); }
+.dh { font-weight: bold; margin-top: 8px; }
+#mbody pre { max-height: 55vh; overflow: auto; background: #11141a; padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; }
+
+th.gs, td.gs { border-left: 3px solid var(--ac); }
+input.cm { width: 120px; }
+tr.r.sel { background: #1e3a5f !important; box-shadow: inset 3px 0 0 var(--ac); }
+tr.r td:first-child { user-select: none; cursor: default; }
+#ctx { position: fixed; z-index: 60; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 270px; box-shadow: 0 8px 24px #000a; font-size: 13px; }
+#ctx[hidden], .modal[hidden] { display: none; }
+.mi { position: relative; display: flex; justify-content: space-between; gap: 22px; padding: 6px 14px; cursor: pointer; }
+.mi:hover { background: var(--ac); }
+.mi small { color: var(--mut); } .mi:hover small { color: #dbeafe; }
+.mi.dis { opacity: .4; cursor: default; } .mi.dis:hover { background: none; }
+.msep { height: 1px; background: var(--bd); margin: 4px 0; }
+.submenu { display: none; position: absolute; left: 100%; top: -5px; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 250px; box-shadow: 0 8px 24px #000a; }
+.mi.has:hover > .submenu { display: block; } .mi.dis > .submenu { display: none !important; }
+#ctx.left .submenu { left: auto; right: 100%; }
+.modal { position: fixed; inset: 0; background: #000a; z-index: 70; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; }
+.mbox { background: var(--card); border: 1px solid var(--bd); border-radius: 8px; width: min(980px, 100%); padding: 16px; }
+.mhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; font-weight: bold; font-size: 15px; }
+.props { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px 14px; }
+.props label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--mut); }
+.props input, .props select { width: 100% !important; }
+.hexgrid { font-family: Consolas, "Courier New", monospace; font-size: 13px; margin: 8px 0 12px; }
+.ho { display: inline-block; width: 30px; color: var(--mut); }
+.hb { display: inline-block; width: 26px; text-align: center; border-radius: 3px; }
+.hb.z { color: #4b5565; } .hb.k { background: #1e3a5f; color: #fff; } .hb.d { background: var(--warn) !important; color: #fff; }
+table.ft { width: auto; } table.ft td { padding: 3px 14px 3px 0; border-bottom: 1px solid var(--bd); }
+.dh { font-weight: bold; margin-top: 8px; }
+#mbody pre { max-height: 55vh; overflow: auto; background: #11141a; padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; }
+
+th.gs, td.gs { border-left: 3px solid var(--ac); }
+input.cm { width: 120px; }
+tr.r.sel { background: #1e3a5f !important; box-shadow: inset 3px 0 0 var(--ac); }
+tr.r td:first-child { user-select: none; cursor: default; }
+#ctx { position: fixed; z-index: 60; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 270px; box-shadow: 0 8px 24px #000a; font-size: 13px; }
+#ctx[hidden], .modal[hidden] { display: none; }
+.mi { position: relative; display: flex; justify-content: space-between; gap: 22px; padding: 6px 14px; cursor: pointer; }
+.mi:hover { background: var(--ac); }
+.mi small { color: var(--mut); } .mi:hover small { color: #dbeafe; }
+.mi.dis { opacity: .4; cursor: default; } .mi.dis:hover { background: none; }
+.msep { height: 1px; background: var(--bd); margin: 4px 0; }
+.submenu { display: none; position: absolute; left: 100%; top: -5px; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 250px; box-shadow: 0 8px 24px #000a; }
+.mi.has:hover > .submenu { display: block; } .mi.dis > .submenu { display: none !important; }
+#ctx.left .submenu { left: auto; right: 100%; }
+.modal { position: fixed; inset: 0; background: #000a; z-index: 70; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; }
+.mbox { background: var(--card); border: 1px solid var(--bd); border-radius: 8px; width: min(980px, 100%); padding: 16px; }
+.mhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; font-weight: bold; font-size: 15px; }
+.props { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px 14px; }
+.props label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--mut); }
+.props input, .props select { width: 100% !important; }
+.hexgrid { font-family: Consolas, "Courier New", monospace; font-size: 13px; margin: 8px 0 12px; }
+.ho { display: inline-block; width: 30px; color: var(--mut); }
+.hb { display: inline-block; width: 26px; text-align: center; border-radius: 3px; }
+.hb.z { color: #4b5565; } .hb.k { background: #1e3a5f; color: #fff; } .hb.d { background: var(--warn) !important; color: #fff; }
+table.ft { width: auto; } table.ft td { padding: 3px 14px 3px 0; border-bottom: 1px solid var(--bd); }
+.dh { font-weight: bold; margin-top: 8px; }
+#mbody pre { max-height: 55vh; overflow: auto; background: #11141a; padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; }
+
+th.gs, td.gs { border-left: 3px solid var(--ac); }
+input.cm { width: 120px; }
+tr.r.sel { background: #1e3a5f !important; box-shadow: inset 3px 0 0 var(--ac); }
+tr.r td:first-child { user-select: none; cursor: default; }
+#ctx { position: fixed; z-index: 60; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 270px; box-shadow: 0 8px 24px #000a; font-size: 13px; }
+#ctx[hidden], .modal[hidden] { display: none; }
+.mi { position: relative; display: flex; justify-content: space-between; gap: 22px; padding: 6px 14px; cursor: pointer; }
+.mi:hover { background: var(--ac); }
+.mi small { color: var(--mut); } .mi:hover small { color: #dbeafe; }
+.mi.dis { opacity: .4; cursor: default; } .mi.dis:hover { background: none; }
+.msep { height: 1px; background: var(--bd); margin: 4px 0; }
+.submenu { display: none; position: absolute; left: 100%; top: -5px; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 250px; box-shadow: 0 8px 24px #000a; }
+.mi.has:hover > .submenu { display: block; } .mi.dis > .submenu { display: none !important; }
+#ctx.left .submenu { left: auto; right: 100%; }
+.modal { position: fixed; inset: 0; background: #000a; z-index: 70; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; }
+.mbox { background: var(--card); border: 1px solid var(--bd); border-radius: 8px; width: min(980px, 100%); padding: 16px; }
+.mhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; font-weight: bold; font-size: 15px; }
+.props { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px 14px; }
+.props label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--mut); }
+.props input, .props select { width: 100% !important; }
+.hexgrid { font-family: Consolas, "Courier New", monospace; font-size: 13px; margin: 8px 0 12px; }
+.ho { display: inline-block; width: 30px; color: var(--mut); }
+.hb { display: inline-block; width: 26px; text-align: center; border-radius: 3px; }
+.hb.z { color: #4b5565; } .hb.k { background: #1e3a5f; color: #fff; } .hb.d { background: var(--warn) !important; color: #fff; }
+table.ft { width: auto; } table.ft td { padding: 3px 14px 3px 0; border-bottom: 1px solid var(--bd); }
+.dh { font-weight: bold; margin-top: 8px; }
+#mbody pre { max-height: 55vh; overflow: auto; background: #11141a; padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; }
+
+th.gs, td.gs { border-left: 3px solid var(--ac); }
+input.cm { width: 120px; }
+tr.r.sel { background: #1e3a5f !important; box-shadow: inset 3px 0 0 var(--ac); }
+tr.r td:first-child { user-select: none; cursor: default; }
+#ctx { position: fixed; z-index: 60; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 270px; box-shadow: 0 8px 24px #000a; font-size: 13px; }
+#ctx[hidden], .modal[hidden] { display: none; }
+.mi { position: relative; display: flex; justify-content: space-between; gap: 22px; padding: 6px 14px; cursor: pointer; }
+.mi:hover { background: var(--ac); }
+.mi small { color: var(--mut); } .mi:hover small { color: #dbeafe; }
+.mi.dis { opacity: .4; cursor: default; } .mi.dis:hover { background: none; }
+.msep { height: 1px; background: var(--bd); margin: 4px 0; }
+.submenu { display: none; position: absolute; left: 100%; top: -5px; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 250px; box-shadow: 0 8px 24px #000a; }
+.mi.has:hover > .submenu { display: block; } .mi.dis > .submenu { display: none !important; }
+#ctx.left .submenu { left: auto; right: 100%; }
+.modal { position: fixed; inset: 0; background: #000a; z-index: 70; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; }
+.mbox { background: var(--card); border: 1px solid var(--bd); border-radius: 8px; width: min(980px, 100%); padding: 16px; }
+.mhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; font-weight: bold; font-size: 15px; }
+.props { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px 14px; }
+.props label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--mut); }
+.props input, .props select { width: 100% !important; }
+.hexgrid { font-family: Consolas, "Courier New", monospace; font-size: 13px; margin: 8px 0 12px; }
+.ho { display: inline-block; width: 30px; color: var(--mut); }
+.hb { display: inline-block; width: 26px; text-align: center; border-radius: 3px; }
+.hb.z { color: #4b5565; } .hb.k { background: #1e3a5f; color: #fff; } .hb.d { background: var(--warn) !important; color: #fff; }
+table.ft { width: auto; } table.ft td { padding: 3px 14px 3px 0; border-bottom: 1px solid var(--bd); }
+.dh { font-weight: bold; margin-top: 8px; }
+#mbody pre { max-height: 55vh; overflow: auto; background: #11141a; padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; }
+
+th.gs, td.gs { border-left: 3px solid var(--ac); }
+input.cm { width: 120px; }
+tr.r.sel { background: #1e3a5f !important; box-shadow: inset 3px 0 0 var(--ac); }
+tr.r td:first-child { user-select: none; cursor: default; }
+#ctx { position: fixed; z-index: 60; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 270px; box-shadow: 0 8px 24px #000a; font-size: 13px; }
+#ctx[hidden], .modal[hidden] { display: none; }
+.mi { position: relative; display: flex; justify-content: space-between; gap: 22px; padding: 6px 14px; cursor: pointer; }
+.mi:hover { background: var(--ac); }
+.mi small { color: var(--mut); } .mi:hover small { color: #dbeafe; }
+.mi.dis { opacity: .4; cursor: default; } .mi.dis:hover { background: none; }
+.msep { height: 1px; background: var(--bd); margin: 4px 0; }
+.submenu { display: none; position: absolute; left: 100%; top: -5px; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 250px; box-shadow: 0 8px 24px #000a; }
+.mi.has:hover > .submenu { display: block; } .mi.dis > .submenu { display: none !important; }
+#ctx.left .submenu { left: auto; right: 100%; }
+.modal { position: fixed; inset: 0; background: #000a; z-index: 70; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; }
+.mbox { background: var(--card); border: 1px solid var(--bd); border-radius: 8px; width: min(980px, 100%); padding: 16px; }
+.mhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; font-weight: bold; font-size: 15px; }
+.props { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px 14px; }
+.props label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--mut); }
+.props input, .props select { width: 100% !important; }
+.hexgrid { font-family: Consolas, "Courier New", monospace; font-size: 13px; margin: 8px 0 12px; }
+.ho { display: inline-block; width: 30px; color: var(--mut); }
+.hb { display: inline-block; width: 26px; text-align: center; border-radius: 3px; }
+.hb.z { color: #4b5565; } .hb.k { background: #1e3a5f; color: #fff; } .hb.d { background: var(--warn) !important; color: #fff; }
+table.ft { width: auto; } table.ft td { padding: 3px 14px 3px 0; border-bottom: 1px solid var(--bd); }
+.dh { font-weight: bold; margin-top: 8px; }
+#mbody pre { max-height: 55vh; overflow: auto; background: #11141a; padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; }
+
+th.gs, td.gs { border-left: 3px solid var(--ac); }
+input.cm { width: 120px; }
+tr.r.sel { background: #1e3a5f !important; box-shadow: inset 3px 0 0 var(--ac); }
+tr.r td:first-child { user-select: none; cursor: default; }
+#ctx { position: fixed; z-index: 60; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 270px; box-shadow: 0 8px 24px #000a; font-size: 13px; }
+#ctx[hidden], .modal[hidden] { display: none; }
+.mi { position: relative; display: flex; justify-content: space-between; gap: 22px; padding: 6px 14px; cursor: pointer; }
+.mi:hover { background: var(--ac); }
+.mi small { color: var(--mut); } .mi:hover small { color: #dbeafe; }
+.mi.dis { opacity: .4; cursor: default; } .mi.dis:hover { background: none; }
+.msep { height: 1px; background: var(--bd); margin: 4px 0; }
+.submenu { display: none; position: absolute; left: 100%; top: -5px; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 250px; box-shadow: 0 8px 24px #000a; }
+.mi.has:hover > .submenu { display: block; } .mi.dis > .submenu { display: none !important; }
+#ctx.left .submenu { left: auto; right: 100%; }
+.modal { position: fixed; inset: 0; background: #000a; z-index: 70; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; }
+.mbox { background: var(--card); border: 1px solid var(--bd); border-radius: 8px; width: min(980px, 100%); padding: 16px; }
+.mhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; font-weight: bold; font-size: 15px; }
+.props { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px 14px; }
+.props label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--mut); }
+.props input, .props select { width: 100% !important; }
+.hexgrid { font-family: Consolas, "Courier New", monospace; font-size: 13px; margin: 8px 0 12px; }
+.ho { display: inline-block; width: 30px; color: var(--mut); }
+.hb { display: inline-block; width: 26px; text-align: center; border-radius: 3px; }
+.hb.z { color: #4b5565; } .hb.k { background: #1e3a5f; color: #fff; } .hb.d { background: var(--warn) !important; color: #fff; }
+table.ft { width: auto; } table.ft td { padding: 3px 14px 3px 0; border-bottom: 1px solid var(--bd); }
+.dh { font-weight: bold; margin-top: 8px; }
+#mbody pre { max-height: 55vh; overflow: auto; background: #11141a; padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; }
+
+th.gs, td.gs { border-left: 3px solid var(--ac); }
+input.cm { width: 120px; }
+.fbtn { display: inline-block; background: var(--ac); color: #fff; border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.15s; }
+.fbtn:hover { background: var(--ac-h); }
+input.hid { display: none; }
+tr.r.sel { background: #1e3a5f !important; box-shadow: inset 3px 0 0 var(--ac); }
+tr.r td:first-child { user-select: none; cursor: default; }
+#ctx { position: fixed; z-index: 60; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 270px; box-shadow: 0 8px 24px #000a; font-size: 13px; }
+#ctx[hidden], .modal[hidden] { display: none; }
+.mi { position: relative; display: flex; justify-content: space-between; gap: 22px; padding: 6px 14px; cursor: pointer; }
+.mi:hover { background: var(--ac); }
+.mi small { color: var(--mut); } .mi:hover small { color: #dbeafe; }
+.mi.dis { opacity: .4; cursor: default; } .mi.dis:hover { background: none; }
+.msep { height: 1px; background: var(--bd); margin: 4px 0; }
+.submenu { display: none; position: absolute; left: 100%; top: -5px; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 250px; box-shadow: 0 8px 24px #000a; }
+.mi.has:hover > .submenu { display: block; } .mi.dis > .submenu { display: none !important; }
+#ctx.left .submenu { left: auto; right: 100%; }
+.modal { position: fixed; inset: 0; background: #000a; z-index: 70; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; }
+.mbox { background: var(--card); border: 1px solid var(--bd); border-radius: 8px; width: min(980px, 100%); padding: 16px; }
+.mhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; font-weight: bold; font-size: 15px; }
+.props { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px 14px; }
+.props label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--mut); }
+.props input, .props select { width: 100% !important; }
+.hexgrid { font-family: Consolas, "Courier New", monospace; font-size: 13px; margin: 8px 0 12px; }
+.ho { display: inline-block; width: 30px; color: var(--mut); }
+.hb { display: inline-block; width: 26px; text-align: center; border-radius: 3px; }
+.hb.z { color: #4b5565; } .hb.k { background: #1e3a5f; color: #fff; } .hb.d { background: var(--warn) !important; color: #fff; }
+table.ft { width: auto; } table.ft td { padding: 3px 14px 3px 0; border-bottom: 1px solid var(--bd); }
+.dh { font-weight: bold; margin-top: 8px; }
+#mbody pre { max-height: 55vh; overflow: auto; background: #11141a; padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; }
+
+th.gs, td.gs { border-left: 3px solid var(--ac); }
+input.cm { width: 120px; }
+.fbtn { display: inline-block; background: var(--ac); color: #fff; border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.15s; }
+.fbtn:hover { background: var(--ac-h); }
+input.hid { display: none; }
+tr.r.sel { background: #1e3a5f !important; box-shadow: inset 3px 0 0 var(--ac); }
+tr.r td:first-child { user-select: none; cursor: default; }
+#ctx { position: fixed; z-index: 60; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 270px; box-shadow: 0 8px 24px #000a; font-size: 13px; }
+#ctx[hidden], .modal[hidden] { display: none; }
+.mi { position: relative; display: flex; justify-content: space-between; gap: 22px; padding: 6px 14px; cursor: pointer; }
+.mi:hover { background: var(--ac); }
+.mi small { color: var(--mut); } .mi:hover small { color: #dbeafe; }
+.mi.dis { opacity: .4; cursor: default; } .mi.dis:hover { background: none; }
+.msep { height: 1px; background: var(--bd); margin: 4px 0; }
+.submenu { display: none; position: absolute; left: 100%; top: -5px; background: #232b3b; border: 1px solid var(--bd); border-radius: 6px; padding: 4px 0; min-width: 250px; box-shadow: 0 8px 24px #000a; }
+.mi.has:hover > .submenu { display: block; } .mi.dis > .submenu { display: none !important; }
+#ctx.left .submenu { left: auto; right: 100%; }
+.modal { position: fixed; inset: 0; background: #000a; z-index: 70; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; }
+.mbox { background: var(--card); border: 1px solid var(--bd); border-radius: 8px; width: min(980px, 100%); padding: 16px; }
+.mhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; font-weight: bold; font-size: 15px; }
+.props { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px 14px; }
+.props label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--mut); }
+.props input, .props select { width: 100% !important; }
+.hexgrid { font-family: Consolas, "Courier New", monospace; font-size: 13px; margin: 8px 0 12px; }
+.ho { display: inline-block; width: 30px; color: var(--mut); }
+.hb { display: inline-block; width: 26px; text-align: center; border-radius: 3px; }
+.hb.z { color: #4b5565; } .hb.k { background: #1e3a5f; color: #fff; } .hb.d { background: var(--warn) !important; color: #fff; }
+table.ft { width: auto; } table.ft td { padding: 3px 14px 3px 0; border-bottom: 1px solid var(--bd); }
+.dh { font-weight: bold; margin-top: 8px; }
+#mbody pre { max-height: 55vh; overflow: auto; background: #11141a; padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+
+<h1>Hiroyasu IC-980 Pro Max - YSF & CSV Editor by Ranke YU6RDR</h1>
+
+<div class="card">
+  <div class="btn-group">
+    <label class="fbtn" for="fYsf">Load .Ysf…</label>
+    <input type="file" id="fYsf" accept=".ysf,.Ysf" class="hid">
+    <label class="fbtn" for="fCsv">Import CSV…</label>
+    <input type="file" id="fCsv" accept=".csv" class="hid">
+    <button id="bNew" class="o">Create empty list</button>
+  </div>
+  <div class="msg" id="info">Select a .Ysf or .CSV file to begin.</div>
+</div>
+
+<div class="card">
+  <div class="btn-group">
+    <button id="bInsEmpty" disabled>+ Insert empty channel above</button>
+    <button id="bInsCopy" class="o" disabled>+ Insert copy above</button>
+    <button id="bUp" class="o" disabled>▲ Move up</button>
+    <button id="bDn" class="o" disabled>▼ Move down</button>
+    <button id="bUndo" class="o" disabled>⟲ Undo</button>
+    <button id="bRedo" class="o" disabled>⟳ Redo</button>
+    <button id="bDel" class="danger" disabled>Delete selected</button>
+    <input type="search" id="q" placeholder="Filter…" style="margin-left:8px;">
+    <div style="flex: 1;"></div>
+    <button id="bCsvChirp" class="csvbtn o" disabled>Export CSV</button>
+    <button id="bSaveYsf" style="background: var(--succ);" disabled>Save as .Ysf (CPS Ready)</button>
+  </div>
+
+  <div id="wrap">
+    <table>
+      <thead><tr id="hr"></tr></thead>
+      <tbody id="tb"></tbody>
+    </table>
+  </div>
+  <div class="msg" id="msg"></div>
+</div>
+
+<div id="confirm" class="modal" hidden><div class="mbox" style="width:min(520px,100%)"><div id="cmsg" style="white-space:pre-line;margin-bottom:16px"></div><div class="btn-group"><button id="cok">Continue</button><button id="ccancel" class="o">Cancel</button></div></div></div>
+<input type="file" id="fDiff" accept=".ysf,.Ysf,.csv" hidden>
+<div id="ctx" hidden></div>
+<div id="modal" class="modal" hidden><div class="mbox"><div class="mhead"><span id="mtitle"></span><button id="mclose" class="o">Close</button></div><div id="mbody"></div></div></div>
+
+<script id="codec">
+
+// ===== Struktura .Ysf fajla (47.046 B) =====
+// Zaglavlje 564 B | 500 zapisa x 85 B | rep (sistemska podešavanja) 3.982 B
+const HEADER_SIZE = 564, REC_SIZE = 85, MAX_CH = 500, TAIL_SIZE = 3982;
+const TAIL_OFFSET = HEADER_SIZE + MAX_CH * REC_SIZE;      // 43064
+const TOTAL_FILE_SIZE = TAIL_OFFSET + TAIL_SIZE;          // 47046
+// Pomeraji unutar zapisa kanala:
+const F_RX = 0, F_TX = 14;                // u32 LE, Hz
+const F_RXT = 28, F_RXT_TYPE = 30;        // RX ton: vrednost (u16 LE) + tip
+const F_TXT = 41, F_TXT_TYPE = 43;        // TX ton: vrednost (u16 LE) + tip
+const F_MODE = 58, F_FLAGS = 60, F_NAME = 63, NAME_LEN = 16;
+// Tip tona: 0 = bez tona, 1 = CTCSS (vrednost = Hz x 10), 2 = DCS normalni, 3 = DCS invertovani
+// DCS vrednost = 0x2800 | šifra (oktalne cifre čitane kao broj, npr. 025 -> 0x15)
+// Bajt 57: bitovi 3-4 = Busy Inhibit (0 OFF, 1 DQT, 2 CAT), bitovi 5-6 = Rx signal Code (0 OFF, 1 DTMF, 2 FSK, 3 FSK DTMF)
+// Bajt 58: bit 7 = Scan (1 ADD, 0 DEL), bit 5 = TX Power (1 High, 0 Low), bit 4 = Bandwidth (1 Wide, 0 Narrow),
+//          bitovi 1-3 = Special DCS (0 OFF, 1-4), bit 0 = Compando (1 ON)
+// Bajt 59: bitovi 0-3 = scramble (0 OFF, 1-8), bit 4 = Vague Subaudio (1 ON)
+// Bajt 60: bit 2 = FM/AM (1 AM), bitovi 4-5 = tip RX tona (Dec), bitovi 6-7 = tip TX tona (Enc)
+// Bajt 61 = PTT Push Code, bajt 62 = PTT Pop Code: 0 OFF, 1 ID, 2.. = Code form-1.. (n+1)
+// Nepoznati bitovi u ovim bajtovima (i svi ostali bajtovi zapisa) čuvaju se netaknuti.
+const TONE_TYPES = [
+  { v: 0, t: 'No tone' }, { v: 1, t: 'CTCSS' }, { v: 2, t: 'DCS normal (N)' }, { v: 3, t: 'DCS inverted (I)' }
+];
+const CTCSS_LIST = [
+  67.0, 69.3, 71.9, 74.4, 77.0, 79.7, 82.5, 85.4, 88.5, 91.5, 94.8, 97.4, 100.0, 103.5, 107.2, 110.9,
+  114.8, 118.8, 123.0, 127.3, 131.8, 136.5, 141.3, 146.2, 151.4, 156.7, 159.8, 162.2, 165.5, 167.9,
+  171.3, 173.8, 177.3, 179.9, 183.5, 186.2, 189.9, 192.8, 196.6, 199.5, 203.5, 206.5, 210.7, 218.1,
+  225.7, 229.1, 233.6, 241.8, 250.3, 254.1
+];
+const DCS_LIST = ('023 025 026 031 032 036 043 047 051 053 054 065 071 072 073 074 114 115 116 122 125 131 132 134 ' +
+  '143 145 152 155 156 162 165 172 174 205 212 223 225 226 243 244 245 246 251 252 255 261 263 265 266 271 274 ' +
+  '306 311 315 325 331 332 343 346 351 356 364 365 371 411 412 413 423 431 432 445 446 452 454 455 462 464 465 ' +
+  '466 503 506 516 523 526 532 546 565 606 612 624 627 631 632 654 662 664 703 712 723 731 732 734 743 754').split(' ');
+
+function u32le(r, o) { return (r[o] | r[o+1] << 8 | r[o+2] << 16 | r[o+3] * 16777216) >>> 0; }
+function u16le(r, o) { return r[o] | r[o+1] << 8; }
+
+function decodeTone(rec, valOff, typeOff) {
+  const type = rec[typeOff] <= 3 ? rec[typeOff] : 0;
+  const val = u16le(rec, valOff);
+  const o = { type, ctcss: 88.5, dcs: '023', noneRaw: type === 0 ? val : 0xFFFF };
+  if (type === 1) o.ctcss = val / 10;
+  else if (type === 2 || type === 3) o.dcs = (val & 0x1FF).toString(8).padStart(3, '0');
+  return o;
+}
+
+function decodeYsf(buf) {
+  const slots = Math.min(MAX_CH, Math.max(0, Math.floor((Math.min(buf.length, TAIL_OFFSET) - HEADER_SIZE) / REC_SIZE)));
+  const channels = [];
+  for (let k = 0; k < slots; k++) {
+    const off = HEADER_SIZE + k * REC_SIZE;
+    const rec = buf.slice(off, off + REC_SIZE);
+    const rxHz = u32le(rec, F_RX);
+    if (rxHz === 0) continue;                   // prazno mesto
+    let name = '';
+    for (let i = F_NAME; i < F_NAME + NAME_LEN; i++) { if (rec[i] === 0) break; name += String.fromCharCode(rec[i]); }
+    channels.push({
+      name, rx: rxHz / 1e6, tx: (u32le(rec, F_TX) || rxHz) / 1e6,
+      am: (rec[F_FLAGS] >> 2) & 1,
+      scan: (rec[58] >> 7) & 1, pwr: (rec[58] >> 5) & 1, bw: (rec[58] >> 4) & 1, sdcs: (rec[58] >> 1) & 7, comp: rec[58] & 1,
+      busy: (rec[57] >> 3) & 3, rxsig: (rec[57] >> 5) & 3,
+      scr: rec[59] & 0x0F, vague: (rec[59] >> 4) & 1, push: rec[61], pop: rec[62],
+      rxT: decodeTone(rec, F_RXT, F_RXT_TYPE), txT: decodeTone(rec, F_TXT, F_TXT_TYPE),
+      raw: Array.from(rec)
+    });
+  }
+  return channels;
+}
+
+function encodeTone(buf, off, valOff, typeOff, t) {
+  buf[off + typeOff] = t.type;
+  let v;
+  if (t.type === 0) v = t.noneRaw;
+  else if (t.type === 1) v = Math.round(t.ctcss * 10);
+  else v = 0x2800 | parseInt(t.dcs, 8);
+  buf[off + valOff] = v & 0xFF; buf[off + valOff + 1] = (v >> 8) & 0xFF;
+}
+
+function encodeYsf(channels, rawHeader, rawTail) {
+  const buf = new Uint8Array(TOTAL_FILE_SIZE);
+  buf.set(rawHeader.subarray(0, HEADER_SIZE), 0);
+  // dinamička bitmaska zauzetih kanala (351..413)
+  for (let i = 351; i <= 413; i++) buf[i] = 0x00;
+  for (let k = 0; k < channels.length && k < MAX_CH; k++) {
+    const n = k + 1;
+    buf[351 + Math.floor(n / 8)] |= (1 << (n % 8));
+  }
+  const putU32 = (o, v) => { buf[o] = v & 0xFF; buf[o+1] = (v >> 8) & 0xFF; buf[o+2] = (v >> 16) & 0xFF; buf[o+3] = (v >>> 24) & 0xFF; };
+  for (let k = 0; k < channels.length && k < MAX_CH; k++) {
+    const off = HEADER_SIZE + k * REC_SIZE, ch = channels[k];
+    if (ch.raw) buf.set(ch.raw, off);
+    putU32(off + F_RX, Math.round(ch.rx * 1e6) >>> 0);
+    putU32(off + F_TX, Math.round(ch.tx * 1e6) >>> 0);
+    encodeTone(buf, off, F_RXT, F_RXT_TYPE, ch.rxT);
+    encodeTone(buf, off, F_TXT, F_TXT_TYPE, ch.txT);
+    buf[off + 57] = (buf[off + 57] & 0x87) | ((ch.busy & 3) << 3) | ((ch.rxsig & 3) << 5);
+    buf[off + 58] = (buf[off + 58] & 0x40) | ((ch.scan & 1) << 7) | ((ch.pwr & 1) << 5) | ((ch.bw & 1) << 4) | ((ch.sdcs & 7) << 1) | (ch.comp & 1);
+    buf[off + 59] = (buf[off + 59] & 0xE0) | ((ch.vague & 1) << 4) | (ch.scr & 0x0F);
+    buf[off + F_FLAGS] = (buf[off + F_FLAGS] & 0x0B) | ((ch.am & 1) << 2) | (ch.rxT.type << 4) | (ch.txT.type << 6);
+    buf[off + 61] = ch.push & 0xFF; buf[off + 62] = ch.pop & 0xFF;
+    for (let i = 0; i < NAME_LEN; i++) buf[off + F_NAME + i] = i < ch.name.length ? (ch.name.charCodeAt(i) & 0xFF) : 0;
+  }
+  buf.set(rawTail.subarray(0, TAIL_SIZE), TAIL_OFFSET);
+  return buf;
+}
+
+
+// ===== Pomoćne funkcije i model =====
+const r6 = (x) => Math.round(x * 1e6) / 1e6;
+const noTone = () => ({ type: 0, ctcss: 88.5, dcs: '023', noneRaw: 0xFFFF });
+// novi (prazan) kanal nema frekvenciju: rx = tx = 0 se prikazuje kao prazno polje
+const newChannel = (name) => ({ name, rx: 0, tx: 0, am: 0, scan: 1, pwr: 1, bw: 1, sdcs: 0, comp: 0,
+  busy: 0, rxsig: 0, scr: 0, vague: 0, push: 0, pop: 0, rxT: noTone(), txT: noTone(), ex: {} });
+
+// Opcije za padajuće menije (vrednost, tekst) - proverene u CPS-u 8118Plus
+const OPT = {
+  pwr: [[1, 'High'], [0, 'Low']],
+  bw: [[1, 'Wide'], [0, 'Narrow']],
+  scan: [[1, 'ADD'], [0, 'DEL']],
+  busy: [[0, 'OFF'], [1, 'DQT'], [2, 'CAT']],
+  sdcs: [[0, 'OFF'], [1, 'Special DCS 1'], [2, 'Special DCS 2'], [3, 'Special DCS 3'], [4, 'Special DCS 4']],
+  onoff: [[0, 'OFF'], [1, 'ON']],
+  scr: [[0, 'OFF']].concat(Array.from({ length: 8 }, (_, i) => [i + 1, 'scramble ' + (i + 1)])),
+  mode: [[0, 'FM'], [1, 'AM']],
+  rxsig: [[0, 'OFF'], [1, 'DTMF'], [2, 'FSK'], [3, 'FSK DTMF']],
+  code: [[0, 'OFF'], [1, 'ID']].concat(Array.from({ length: 30 }, (_, i) => [i + 2, 'Code form-' + (i + 1)]))
+};
+// ako fajl sadrži vrednost koje nema na listi, prikaži je kao "?" i sačuvaj je netaknutu
+function withCur(opts, cur) { return opts.some(o => o[0] === cur) ? opts : opts.concat([[cur, '? (' + cur + ')']]); }
+
+function nearestCtcss(f) { return CTCSS_LIST.reduce((a, b) => Math.abs(b - f) < Math.abs(a - f) ? b : a); }
+function csvCell(s) { s = String(s); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+function parseCSVLine(line) {
+  const out = []; let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQ) { if (c === '"') { if (line[i+1] === '"') { cur += '"'; i++; } else inQ = false; } else cur += c; }
+    else if (c === ',') { out.push(cur); cur = ''; }
+    else if (c === '"') inQ = true;
+    else cur += c;
+  }
+  out.push(cur);
+  return out.map(s => s.trim());
+}
+function sameTone(a, b) {
+  return a.type === b.type && (a.type === 0 || (a.type === 1 ? Math.abs(a.ctcss - b.ctcss) < 0.05 : a.dcs === b.dcs));
+}
+
+// ===== CHIRP / Radtel RT-920 CSV (21 kolona, CRLF, bez BOM-a - kao u priloženom fajlu) =====
+const CHIRP_HEAD = ['Location','Name','Frequency','Duplex','Offset','Tone','rToneFreq','cToneFreq','DtcsCode','DtcsPolarity',
+  'RxDtcsCode','CrossMode','Mode','TStep','Skip','Power','Comment','URCALL','RPT1CALL','RPT2CALL','DVCODE'];
+const CROSS_MODES = ['Tone->Tone','DTCS->','->DTCS','Tone->DTCS','DTCS->Tone','->Tone','DTCS->DTCS','Tone->'];
+
+function dirOf(ch) { const d = r6(ch.tx - ch.rx); return { dir: d === 0 ? '' : (d > 0 ? '+' : '-'), off: Math.abs(d) }; }
+
+// CHIRP polja tona -> tonovi kanala (Dec = RX ton, Enc = TX ton)
+function toneFromChirp(f) {
+  const rT = parseFloat(f.rToneFreq) || 88.5, cT = parseFloat(f.cToneFreq) || 88.5;
+  const pad = (s) => String(s || '023').padStart(3, '0');
+  const dc = pad(f.DtcsCode), rdc = pad(f.RxDtcsCode || f.DtcsCode);
+  const pol = String(f.DtcsPolarity || 'NN').toUpperCase();
+  const mk = (kind, isTx, sameCode) => {
+    const t = noTone();
+    if (kind === 'Tone') { t.type = 1; t.ctcss = nearestCtcss(isTx ? rT : cT); }
+    else if (kind === 'DTCS') {
+      const code = isTx ? dc : (sameCode ? dc : rdc);
+      if (DCS_LIST.includes(code)) { t.type = pol[isTx ? 0 : 1] === 'R' ? 3 : 2; t.dcs = code; }
+    }
+    return t;
+  };
+  const mode = f.Tone || '';
+  if (mode === 'Tone') return { txT: mk('Tone', true), rxT: noTone() };
+  if (mode === 'TSQL') return { txT: mk('Tone', false), rxT: mk('Tone', false) };
+  if (mode === 'DTCS') return { txT: mk('DTCS', true), rxT: mk('DTCS', false, true) };
+  if (mode === 'Cross') { const [a, b] = String(f.CrossMode || 'Tone->Tone').split('->'); return { txT: mk(a, true), rxT: mk(b, false) }; }
+  return { txT: noTone(), rxT: noTone() };
+}
+function applyChirpTones(ch, f) {
+  const r = toneFromChirp(f);
+  ['rxT', 'txT'].forEach(k => { if (!(r[k].type === 0 && ch[k].type === 0)) ch[k] = r[k]; });
+}
+// kanal -> CHIRP polja
+function chirpFields(ch) {
+  const tx = ch.txT, rx = ch.rxT, kind = (t) => t.type === 0 ? '' : (t.type === 1 ? 'Tone' : 'DTCS');
+  const dd = dirOf(ch);
+  const f = { Duplex: dd.dir, Offset: dd.off, Tone: '',
+    rToneFreq: (tx.type === 1 ? tx.ctcss : 88.5).toFixed(1), cToneFreq: (rx.type === 1 ? rx.ctcss : 88.5).toFixed(1),
+    DtcsCode: tx.type >= 2 ? tx.dcs : '023', DtcsPolarity: (tx.type === 3 ? 'R' : 'N') + (rx.type === 3 ? 'R' : 'N'),
+    RxDtcsCode: rx.type >= 2 ? rx.dcs : '023', CrossMode: 'Tone->Tone' };
+  if (tx.type === 0 && rx.type === 0) f.Tone = '';
+  else if (tx.type === 1 && rx.type === 0) f.Tone = 'Tone';
+  else if (tx.type === 1 && rx.type === 1 && Math.abs(tx.ctcss - rx.ctcss) < 0.05) f.Tone = 'TSQL';
+  else if (tx.type >= 2 && rx.type >= 2 && tx.dcs === rx.dcs) f.Tone = 'DTCS';
+  else { f.Tone = 'Cross'; f.CrossMode = kind(tx) + '->' + kind(rx); }
+  if (ch.pref) {                              // izbor korisnika (npr. Cross sa istim tonovima) ostaje ako daje iste tonove
+    const r = toneFromChirp(Object.assign({}, f, ch.pref));
+    if (sameTone(r.txT, tx) && sameTone(r.rxT, rx)) { f.Tone = ch.pref.Tone; f.CrossMode = ch.pref.CrossMode; }
+  }
+  f.Mode = ch.am ? 'NAM' : (ch.bw ? 'FM' : 'NFM');   // u CSV-u je svaki AM kanal "NAM"
+  f.Skip = ch.scan ? '' : 'S';
+  return f;
+}
+function chirpRowToChannel(g, n) {
+  const rx = parseFloat(g('Frequency')); if (!(rx > 0)) return null;
+  const dup = g('Duplex'), off = parseFloat(g('Offset')) || 0;
+  let tx = rx;
+  if (dup === '-') tx = rx - off; else if (dup === '+') tx = rx + off; else if (dup.toLowerCase() === 'split') tx = off;
+  if (!(tx > 0)) tx = rx;
+  const f = {}; ['Tone','rToneFreq','cToneFreq','DtcsCode','DtcsPolarity','RxDtcsCode','CrossMode'].forEach(k => f[k] = g(k));
+  const tn = toneFromChirp(f), m = g('Mode').toUpperCase();
+  const ch = Object.assign(newChannel(''), {
+    name: (g('Name') || ('CH-' + n)).substring(0, 16), rx: r6(rx), tx: r6(tx),
+    am: (m === 'AM' || m === 'NAM') ? 1 : 0, bw: m === 'NFM' ? 0 : 1, scan: g('Skip').toUpperCase() === 'S' ? 0 : 1,
+    rxT: tn.rxT, txT: tn.txT });
+  ch.pref = { Tone: f.Tone, CrossMode: f.CrossMode || 'Tone->Tone' };
+  ch.ex = { TStep: g('TStep') || '5.00', Comment: g('Comment'), URCALL: g('URCALL'), RPT1CALL: g('RPT1CALL'), RPT2CALL: g('RPT2CALL'), DVCODE: g('DVCODE') };
+  return ch;
+}
+function toChirpCsv(channels) {
+  const lines = [CHIRP_HEAD.join(',')];
+  channels.forEach((ch, i) => {
+    const f = chirpFields(ch), ex = ch.ex || {};
+    lines.push([i, ch.name, ch.rx.toFixed(6), f.Duplex, f.Offset.toFixed(6), f.Tone, f.rToneFreq, f.cToneFreq, f.DtcsCode,
+      f.DtcsPolarity, f.RxDtcsCode, f.CrossMode, f.Mode, ex.TStep || '5.00', f.Skip, '8.0W',
+      ex.Comment || '', ex.URCALL || '', ex.RPT1CALL || '', ex.RPT2CALL || '', ex.DVCODE || ''].map(csvCell).join(','));
+  });
+  return lines.join('\r\n') + '\r\n';
+}
+
+// ===== CSV sa kolonama kao u CPS-u 8118Plus =====
+const FULL_HEAD = ['NO.','RX Freq.','TX Freq.','QT/DQT Dec','QT/DQT Enc','TX Power','Bandwidth','Scan','Busy Inhibit','Special DCS',
+  'Vague Subaudio','Compando','scramble','FM/AM','Rx signal Code','PTT Push Code','PTT Pop Code','Name'];
+const toneLabel = (t) => t.type === 0 ? 'Off' : (t.type === 1 ? t.ctcss.toFixed(1) : 'D' + t.dcs + (t.type === 3 ? 'I' : 'N'));
+const optLabel = (k, v) => { const o = OPT[k].find(x => x[0] === v); return o ? o[1] : '? (' + v + ')'; };
+function parseToneLabel(s) {
+  const t = noTone(); s = String(s).trim();
+  if (!s || /^off$/i.test(s)) return t;
+  const m = /^D(\d{3})([NI])$/i.exec(s);
+  if (m) { if (DCS_LIST.includes(m[1])) { t.type = m[2].toUpperCase() === 'I' ? 3 : 2; t.dcs = m[1]; } return t; }
+  const f = parseFloat(s); if (f > 0) { t.type = 1; t.ctcss = nearestCtcss(f); }
+  return t;
+}
+function optVal(k, label, def) {
+  label = String(label).trim();
+  const o = OPT[k].find(x => x[1].toLowerCase() === label.toLowerCase()); if (o) return o[0];
+  const m = /^\? \((\d+)\)$/.exec(label); return m ? parseInt(m[1]) : def;
+}
+function toFullCsv(channels) {
+  const lines = [FULL_HEAD.join(',')];
+  channels.forEach((ch, i) => lines.push([i + 1, ch.rx.toFixed(5), ch.tx.toFixed(5), toneLabel(ch.rxT), toneLabel(ch.txT),
+    optLabel('pwr', ch.pwr), optLabel('bw', ch.bw), optLabel('scan', ch.scan), optLabel('busy', ch.busy), optLabel('sdcs', ch.sdcs),
+    optLabel('onoff', ch.vague), optLabel('onoff', ch.comp), optLabel('scr', ch.scr), optLabel('mode', ch.am),
+    optLabel('rxsig', ch.rxsig), optLabel('code', ch.push), optLabel('code', ch.pop), ch.name].map(csvCell).join(',')));
+  return '\uFEFF' + lines.join('\r\n') + '\r\n';       // BOM da Excel pravilno otvori fajl
+}
+function fullRowToChannel(g, n) {
+  const rx = parseFloat(g('RX Freq.')); if (!(rx > 0)) return null;
+  let tx = parseFloat(g('TX Freq.')); if (!(tx > 0)) tx = rx;
+  return Object.assign(newChannel(''), {
+    name: (g('Name') || ('CH-' + n)).substring(0, 16), rx: r6(rx), tx: r6(tx),
+    rxT: parseToneLabel(g('QT/DQT Dec')), txT: parseToneLabel(g('QT/DQT Enc')),
+    pwr: optVal('pwr', g('TX Power'), 1), bw: optVal('bw', g('Bandwidth'), 1), scan: optVal('scan', g('Scan'), 1),
+    busy: optVal('busy', g('Busy Inhibit'), 0), sdcs: optVal('sdcs', g('Special DCS'), 0),
+    vague: optVal('onoff', g('Vague Subaudio'), 0), comp: optVal('onoff', g('Compando'), 0), scr: optVal('scr', g('scramble'), 0),
+    am: optVal('mode', g('FM/AM'), 0), rxsig: optVal('rxsig', g('Rx signal Code'), 0),
+    push: optVal('code', g('PTT Push Code'), 0), pop: optVal('code', g('PTT Pop Code'), 0) });
+}
+// prepoznaje oba formata (CHIRP / CPS kolone)
+function parseAnyCsv(text) {
+  text = String(text).replace(/^\uFEFF/, '');
+  const lines = text.split(/\r?\n/).filter(l => l.trim().length);
+  const res = { channels: [], skipped: 0, kind: '' };
+  if (lines.length < 2) return res;
+  const head = parseCSVLine(lines[0]);
+  const chirp = head.indexOf('Frequency') >= 0, full = head.indexOf('RX Freq.') >= 0;
+  if (!chirp && !full) return res;
+  res.kind = chirp ? 'chirp' : 'full';
+  for (let i = 1; i < lines.length && res.channels.length < MAX_CH; i++) {
+    const row = parseCSVLine(lines[i]);
+    const g = (n) => { const ix = head.indexOf(n); return ix >= 0 && ix < row.length ? row[ix].trim() : ''; };
+    const ch = chirp ? chirpRowToChannel(g, i) : fullRowToChannel(g, i);
+    if (ch) res.channels.push(ch); else res.skipped++;
+  }
+  return res;
+}
+
+</script>
+<script>
+const TEMPLATE_B64 = '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AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACwAAAAAEdNUiAyMQAAAAAAAAAAAAAAAAAAAACIn5QbAAAAAAAAAAAAAIiflBsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAsAAAAABHTVIgMjIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAQMAAAAAAAAAA2oYAACIEwAAAAAA3AW0AAAFCAABAQAAAgIAAP8AAAEEAAAAAQAAAQAAAAACAQAAAAAAAAAAAAAAAAAAAAABAQAAAQAAAB48CgEIAAIADAkAAAAAAAAAAAAAAQACAQEAAAEAAAAAAQAAAGRkZAD0ATIAAB4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABIRUxMTwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAoAAAACAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAaPTtGQAAAAAAAAAAAABoIR8bAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGj07RkAAAAAAAAAAAAAaCEfGwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABo9O0ZAAAAAAAAAAAAAGghHxsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAaPTtGQAAAAAAAAAAAABoIR8bAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGj07RkAAAAAAAAAAAAAaCEfGwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABo9O0ZAAAAAAAAAAAAAGghHxsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+let templateBuf = null;
+let rawHeader = new Uint8Array(HEADER_SIZE), rawTail = new Uint8Array(TAIL_SIZE);
+let channels = [], sel = new Set(), primary = -1, anchor = -1, lastShift = false;
+const undoStack = [], redoStack = [];
+let fileBase = '';   // ime poslednjeg učitanog/uvezenog fajla (bez ekstenzije) - koristi se pri snimanju
+const baseName = (n) => String(n).replace(/^.*[\\/]/, '').replace(/\.[^.]*$/, '');
+const DEFAULT_NAME = 'IC980_channels_export';
+let internalClip = null;
+
+(function () {
+  const bin = atob(TEMPLATE_B64), u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  if (u.length === TOTAL_FILE_SIZE) { templateBuf = u; rawHeader = u.slice(0, HEADER_SIZE); rawTail = u.slice(TAIL_OFFSET); }
+})();
+
+const $ = (id) => document.getElementById(id);
+function setMsg(txt, cls) { const m = $('msg'); m.className = 'msg ' + (cls || ''); m.textContent = txt; }
+function download(name, data, mime) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([data], { type: mime || 'application/octet-stream' }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+}
+function resetFromTemplate() { if (templateBuf) { rawHeader = templateBuf.slice(0, HEADER_SIZE); rawTail = templateBuf.slice(TAIL_OFFSET); } }
+
+function initEmpty() {
+  resetFromTemplate();
+  channels = [];
+  for (let i = 0; i < 16; i++) channels.push(newChannel('Channel ' + (i + 1)));
+  fileBase = '';
+  resetHistory(); setSel([0], 0); render();
+  setMsg('A new empty working list was created.', 'succ');
+}
+
+// ===== Učitavanje .Ysf =====
+$('fYsf').onchange = async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const buf = new Uint8Array(await file.arrayBuffer());
+  if (buf.length < TOTAL_FILE_SIZE) setMsg('Warning: the file is smaller than the standard 47,046 B and will be padded when saved.', 'err');
+  rawHeader = buf.slice(0, HEADER_SIZE);
+  rawTail = buf.length >= TOTAL_FILE_SIZE ? buf.slice(TAIL_OFFSET, TAIL_OFFSET + TAIL_SIZE)
+          : (templateBuf ? templateBuf.slice(TAIL_OFFSET) : new Uint8Array(TAIL_SIZE));
+  channels = decodeYsf(buf); fileBase = baseName(file.name);
+  resetHistory(); setSel(channels.length ? [0] : [], 0); render();
+  if (buf.length >= TOTAL_FILE_SIZE) setMsg('Successfully loaded ' + channels.length + ' channels from the .Ysf file.', 'succ');
+  e.target.value = '';
+};
+
+// ===== Uvoz CSV (prepoznaje CHIRP/Radtel format i CSV sa CPS kolonama) =====
+$('fCsv').onchange = (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    const r = parseAnyCsv(evt.target.result);
+    if (!r.kind) { setMsg('CSV not recognized: a CHIRP/Radtel format CSV is expected.', 'err'); return; }
+    if (!r.channels.length) { setMsg('No valid channel was found in the CSV file.', 'err'); return; }
+    resetFromTemplate();
+    resetHistory(); channels = r.channels; fileBase = baseName(file.name); setSel([0], 0); render();
+    setMsg('Imported ' + r.channels.length + ' channels from CSV (' + (r.kind === 'chirp' ? 'CHIRP/Radtel format' : 'CPS columns') + ')' +
+      (r.skipped ? ', skipped ' + r.skipped : '') + '. Parameters that the CSV does not contain were left at their default values.', 'succ');
+  };
+  reader.readAsText(file); e.target.value = '';
+};
+
+// ===== Gradivni elementi tabele =====
+function mkSel(options, current, onchange, disabled) {
+  const s = document.createElement('select');
+  options.forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; if (String(v) === String(current)) o.selected = true; s.appendChild(o); });
+  s.disabled = !!disabled; s.onchange = () => onchange(s.value); return s;
+}
+function mkInp(type, val, cls, onchange, extra) {
+  const i = document.createElement('input'); i.type = type; i.value = val; i.className = cls || '';
+  if (extra) Object.assign(i, extra);
+  i.onchange = () => onchange(i.value); return i;
+}
+function toneValueSelect(t) {
+  if (t.type === 0) return mkSel([['', '—']], '', () => {}, true);
+  if (t.type === 1) {
+    const list = CTCSS_LIST.slice();
+    if (!list.some(x => Math.abs(x - t.ctcss) < 0.05)) { list.push(t.ctcss); list.sort((a, b) => a - b); }
+    return mkSel(list.map(f => [f, f.toFixed(1) + ' Hz']), t.ctcss, v => { t.ctcss = parseFloat(v); });
+  }
+  return mkSel(DCS_LIST.map(c => [c, 'D' + c + (t.type === 3 ? 'I' : 'N')]), t.dcs, v => { t.dcs = v; });
+}
+const ctcssOpts = CTCSS_LIST.map(f => [f.toFixed(1), f.toFixed(1)]);
+const dcsOpts = DCS_LIST.map(c => [c, c]);
+
+const fv = (n) => n > 0 ? n.toFixed(5) : '';                       // prazno polje za kanal bez frekvencije
+const dd = (ch) => (ch.rx > 0 && ch.tx > 0) ? dirOf(ch) : { dir: '', off: 0 };
+const validChannels = () => channels.filter(c => c.rx > 0).map(c => c.tx > 0 ? c : Object.assign({}, c, { tx: c.rx }));
+const C = {};   // kolone: (kanal, {idx, redo}) -> element ili tekst
+C.idx1 = (ch, x) => String(x.idx + 1);
+C.idx0 = (ch, x) => String(x.idx);
+C.name = (ch, x) => mkInp('text', ch.name, 'nm', v => { ch.name = v.substring(0, 16); }, { maxLength: 16 });
+C.rx = (ch, x) => mkInp('number', fv(ch.rx), 'fq', v => { const n = parseFloat(v) || 0; if (n > 0 && !(ch.tx > 0)) ch.tx = n; ch.rx = n; x.redo(); }, { step: 0.00001 });
+C.rxKeep = (ch, x) => mkInp('number', fv(ch.rx), 'fq', v => { const n = parseFloat(v) || 0; if (n > 0 && !(ch.tx > 0)) ch.tx = n; else if (ch.rx > 0 && ch.tx > 0) ch.tx = r6(n + (ch.tx - ch.rx)); ch.rx = n; x.redo(); }, { step: 0.00001 });
+C.tx = (ch, x) => mkInp('number', fv(ch.tx), 'fq', v => { ch.tx = parseFloat(v) || 0; x.redo(); }, { step: 0.00001 });
+C.dir = (ch, x) => mkSel([['', 'Simplex'], ['+', '+ (TX above RX)'], ['-', '− (TX below RX)']], dd(ch).dir, v => {
+  const o = dd(ch).off || 0.6; ch.tx = v === '' ? ch.rx : r6(ch.rx + (v === '+' ? o : -o)); x.redo(); });
+C.duplex = (ch, x) => mkSel([['', '(simplex)'], ['+', '+'], ['-', '-']], dd(ch).dir, v => {
+  const o = dd(ch).off || 0.6; ch.tx = v === '' ? ch.rx : r6(ch.rx + (v === '+' ? o : -o)); x.redo(); });
+C.off = (ch, x) => mkInp('number', (ch.rx > 0 && ch.tx > 0) ? dd(ch).off.toFixed(6) : '', 'of', v => {
+  const o = Math.abs(parseFloat(v) || 0), d = dd(ch).dir; ch.tx = d === '' ? ch.rx : r6(ch.rx + (d === '+' ? o : -o)); x.redo(); }, { step: 0.00001, min: 0 });
+C.toneType = (key) => (ch, x) => mkSel(TONE_TYPES.map(t => [t.v, t.t]), ch[key].type, v => { ch[key].type = parseInt(v); x.redo(); });
+C.toneVal = (key) => (ch, x) => toneValueSelect(ch[key]);
+C.prop = (prop, opts) => (ch, x) => mkSel(withCur(opts, ch[prop]), ch[prop], v => { ch[prop] = parseInt(v); });
+// CHIRP kolone tona (Tone, rToneFreq, cToneFreq, DtcsCode, DtcsPolarity, RxDtcsCode, CrossMode)
+C.cs = (field, opts) => (ch, x) => {
+  const f = chirpFields(ch);
+  return mkSel(withCur(opts, f[field]), f[field], v => {
+    const g = chirpFields(ch); g[field] = v; applyChirpTones(ch, g);
+    if (field === 'Tone' || field === 'CrossMode') ch.pref = { Tone: g.Tone, CrossMode: g.CrossMode };
+    x.redo();
+  });
+};
+C.mode = (ch, x) => mkSel([['FM', 'FM'], ['NFM', 'NFM'], ['NAM', 'NAM']], ch.am ? 'NAM' : (ch.bw ? 'FM' : 'NFM'), v => {
+  if (v === 'NAM') ch.am = 1; else { ch.am = 0; ch.bw = v === 'FM' ? 1 : 0; } });
+C.skip = (ch, x) => mkSel([['', '(blank) ADD'], ['S', 'S = DEL']], ch.scan ? '' : 'S', v => { ch.scan = v === '' ? 1 : 0; });
+C.power = (ch, x) => mkSel([['8.0W', '8.0W']], '8.0W', () => {}, true);
+C.exSel = (key, opts, def) => (ch, x) => { ch.ex = ch.ex || {}; const cur = ch.ex[key] || def;
+  return mkSel(withCur(opts, cur), cur, v => { ch.ex[key] = v; }); };
+C.exText = (key) => (ch, x) => { ch.ex = ch.ex || {}; return mkInp('text', ch.ex[key] || '', 'cm', v => { ch.ex[key] = v; }); };
+
+// ===== Tabela =====
+function buildHead() {
+  const tr = $('hr'); tr.innerHTML = '';
+  COLS.forEach(c => {
+    const th = document.createElement('th'); th.textContent = c.t;
+    if (c.s) { const s = document.createElement('small'); s.textContent = c.s; th.appendChild(s); }
+    if (c.g) th.className = 'gs';
+    tr.appendChild(th);
+  });
+}
+let lastVisible = [];
+function rowText(ch) {
+  return [ch.name, ch.rx.toFixed(5), ch.tx.toFixed(5), toneLabel(ch.rxT), toneLabel(ch.txT), optLabel('pwr', ch.pwr), optLabel('bw', ch.bw),
+    optLabel('scan', ch.scan), optLabel('busy', ch.busy), optLabel('sdcs', ch.sdcs), optLabel('scr', ch.scr), optLabel('mode', ch.am),
+    optLabel('rxsig', ch.rxsig), optLabel('code', ch.push), optLabel('code', ch.pop)].join(' ').toLowerCase();
+}
+function render() {
+  const tb = $('tb'); tb.innerHTML = '';
+  const q = $('q').value.trim().toLowerCase();
+  lastVisible = [];
+  channels.forEach((ch, idx) => {
+    if (q && !rowText(ch).includes(q)) return;
+    lastVisible.push(idx);
+    const tr = document.createElement('tr');
+    tr.className = 'r' + (sel.has(idx) ? ' sel' : ''); tr.dataset.idx = idx;
+    const x = { idx, redo: render };
+    COLS.forEach(c => {
+      const td = document.createElement('td'), v = c.cell(ch, x);
+      if (typeof v === 'string') td.textContent = v; else td.appendChild(v);
+      if (c.g) td.className = 'gs';
+      tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  });
+  updateButtons();
+}
+function paintSel() {
+  $('tb').querySelectorAll('tr').forEach(tr => tr.classList.toggle('sel', sel.has(+tr.dataset.idx)));
+  updateButtons();
+}
+function updateButtons() {
+  const n = sel.size, a = selIdx(), room = channels.length < MAX_CH;
+  $('info').textContent = 'Total channels in list: ' + channels.length + ' / ' + MAX_CH + (n ? '  ·  selected: ' + n : '') + (fileBase ? '  ·  file: ' + fileBase : '');
+  $('bInsEmpty').disabled = !room;
+  $('bInsCopy').disabled = !n || !room;
+  $('bDel').disabled = !n;
+  $('bUp').disabled = !n || a[0] === 0;
+  $('bDn').disabled = !n || a[a.length - 1] >= channels.length - 1;
+  $('bUndo').disabled = !undoStack.length; $('bRedo').disabled = !redoStack.length;
+  $('bSaveYsf').disabled = channels.length === 0;
+  document.querySelectorAll('.csvbtn').forEach(b => b.disabled = channels.length === 0);
+}
+
+// ===== Izbor redova: klik, Shift+klik (opseg), Ctrl+klik (dodaj/ukloni) =====
+function selIdx() { return Array.from(sel).sort((a, b) => a - b); }
+function setSel(arr, prim) {
+  sel = new Set(arr.filter(i => i >= 0 && i < channels.length));
+  const a = selIdx();
+  primary = (prim !== undefined && sel.has(prim)) ? prim : (a.length ? a[0] : -1);
+}
+$('tb').addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  const tr = e.target.closest('tr'); if (!tr) return;
+  const idx = +tr.dataset.idx, inCtl = ['INPUT', 'SELECT', 'OPTION'].includes(e.target.tagName);
+  if (!inCtl && e.shiftKey) {
+    e.preventDefault();
+    const a = lastVisible.indexOf(anchor >= 0 ? anchor : primary), b = lastVisible.indexOf(idx);
+    if (a < 0) { setSel([idx], idx); anchor = idx; }
+    else { const lo = Math.min(a, b), hi = Math.max(a, b); setSel(lastVisible.slice(lo, hi + 1), idx); }
+  } else if (!inCtl && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    const s = new Set(sel); if (s.has(idx)) s.delete(idx); else s.add(idx);
+    setSel(Array.from(s), s.has(idx) ? idx : undefined); anchor = idx;
+  } else if (!sel.has(idx) || (!inCtl && sel.size > 1)) { setSel([idx], idx); anchor = idx; }
+  else primary = idx;
+  paintSel();
+});
+$('q').oninput = () => {
+  render(); const vis = new Set(lastVisible);
+  setSel(selIdx().filter(i => vis.has(i))); paintSel();
+};
+
+// ===== Poništi / Ponovi (Undo / Redo) =====
+const snap = () => JSON.stringify({ c: channels, s: selIdx(), p: primary });
+function pushUndo() { undoStack.push(snap()); if (undoStack.length > 100) undoStack.shift(); redoStack.length = 0; updateButtons(); }
+function resetHistory() { undoStack.length = 0; redoStack.length = 0; }
+function restore(s) { const o = JSON.parse(s); closeModal(); channels = o.c; setSel(o.s, o.p); render(); }
+function undo() { if (!undoStack.length) { setMsg('Nothing to undo.', ''); return; } redoStack.push(snap()); restore(undoStack.pop()); setMsg('Undone.', 'succ'); }
+function redo() { if (!redoStack.length) { setMsg('Nothing to redo.', ''); return; } undoStack.push(snap()); restore(redoStack.pop()); setMsg('Redone.', 'succ'); }
+$('tb').addEventListener('change', pushUndo, true);            // snimak stanja pre svake izmene ćelije
+$('tb').addEventListener('change', (e) => { if (e.target.tagName === 'SELECT') e.target.blur(); });   // da prečice rade posle izbora
+
+// ===== Operacije nad izabranim redovima =====
+const clone = (o) => JSON.parse(JSON.stringify(o));
+function insertAbove(copy) {
+  if (channels.length >= MAX_CH) { setMsg('The list is full (' + MAX_CH + ' channels).', 'err'); return; }
+  const a = selIdx(), at = a.length ? a[0] : channels.length;
+  let add = (copy && a.length) ? a.map(i => clone(channels[i])) : [newChannel('New Channel')];
+  add = add.slice(0, MAX_CH - channels.length);
+  pushUndo(); channels.splice(at, 0, ...add);
+  setSel(add.map((_, k) => at + k), at); anchor = at; render();
+  setMsg('Inserted ' + add.length + (copy ? ' copied' : ' empty') + ' channel(s) above position #' + (at + 1) + '.', 'succ');
+}
+function delSel() {
+  const a = selIdx(); if (!a.length) return;
+  pushUndo(); channels = channels.filter((_, i) => !sel.has(i));
+  const keep = Math.min(a[0], channels.length - 1);
+  setSel(keep >= 0 ? [keep] : [], keep); anchor = keep; render();
+  setMsg('Deleted ' + a.length + ' channel(s) (the rest were shifted up).', 'succ');
+}
+function blankSel() {
+  const a = selIdx(); if (!a.length) return;
+  pushUndo(); a.forEach(i => { channels[i] = newChannel('Channel ' + (i + 1)); }); render();
+  setMsg('Reset to defaults: ' + a.length + ' channel(s) (positions kept).', 'succ');
+}
+function moveSel(dir) {
+  const n = channels.length, f = channels.map((_, i) => sel.has(i));
+  if (!f.some(Boolean)) return;
+  pushUndo();
+  const sw = (i, j) => { [channels[i], channels[j]] = [channels[j], channels[i]]; [f[i], f[j]] = [f[j], f[i]]; };
+  if (dir < 0) { for (let i = 1; i < n; i++) if (f[i] && !f[i - 1]) sw(i, i - 1); }
+  else { for (let i = n - 2; i >= 0; i--) if (f[i] && !f[i + 1]) sw(i, i + 1); }
+  const arr = []; f.forEach((v, i) => { if (v) arr.push(i); });
+  const shift = dir; setSel(arr, primary >= 0 ? Math.max(0, Math.min(n - 1, primary + shift)) : undefined); render();
+}
+const SORTS = { name: ['Name', c => c.name.toLowerCase()], rx: ['RX frequency', c => c.rx], tx: ['TX frequency', c => c.tx], mode: ['Mode (FM/AM)', c => c.am] };
+function sortSel(key, desc) {
+  const a = selIdx(); if (a.length < 2) return;
+  pushUndo(); const f = SORTS[key][1], rows = a.map(i => channels[i]);
+  rows.sort((x, y) => { const p = f(x), q = f(y), r = p < q ? -1 : (p > q ? 1 : 0); return desc ? -r : r; });
+  a.forEach((i, k) => { channels[i] = rows[k]; }); render();
+  setMsg('Sorted ' + a.length + ' channels: ' + SORTS[key][0] + (desc ? ' (descending)' : ' (ascending)') + '.', 'succ');
+}
+
+// ===== Klipbord: Copy / Copy portable / Cut / Paste =====
+async function writeClip(text) {
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch (e) {
+    const ta = document.createElement('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+    document.body.appendChild(ta); ta.select(); let ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) {}
+    ta.remove(); return ok;
+  }
+}
+async function doCopy(portable) {
+  const a = selIdx(); if (!a.length) return false;
+  const rows = a.map(i => clone(channels[i]));
+  internalClip = JSON.stringify(rows);
+  const ok = await writeClip(portable ? toChirpCsv(rows) : 'IC980JSON:' + internalClip);
+  setMsg('Copied ' + rows.length + ' channel(s)' + (portable ? ' (portable: CHIRP/Radtel CSV text)' : '') + (ok ? '.' : ' (inside the editor only - the system clipboard is not available).'), 'succ');
+  return true;
+}
+async function doCut() { if (await doCopy(false)) delSel(); }
+function validRows(r) {
+  return Array.isArray(r) ? r.filter(x => x && typeof x.rx === 'number' && typeof x.tx === 'number' && x.rxT && x.txT) : null;
+}
+function parseClipText(t) {
+  t = String(t || '');
+  if (t.startsWith('IC980JSON:')) { try { const r = validRows(JSON.parse(t.slice(10))); return r && r.length ? r : null; } catch (e) { return null; } }
+  const r = parseAnyCsv(t);
+  return r.kind && r.channels.length ? r.channels : null;
+}
+// sopstveni prozor za potvrdu (umesto confirm(), čija dugmad prikazuje pregledač na svom jeziku)
+function askConfirm(msg) {
+  return new Promise((resolve) => {
+    $('cmsg').textContent = msg; $('confirm').hidden = false;
+    const done = (v) => { $('confirm').hidden = true; $('cok').onclick = $('ccancel').onclick = null; resolve(v); };
+    $('cok').onclick = () => done(true); $('ccancel').onclick = () => done(false);
+    $('cok').focus();
+  });
+}
+async function pasteRows(rows, insert) {
+  if (!rows || !rows.length) { setMsg('Nothing to paste (the clipboard is empty or its content was not recognized).', 'err'); return; }
+  const start = sel.size ? selIdx()[0] : channels.length, add = rows.map(clone);
+  if (insert) {
+    const room = MAX_CH - channels.length;
+    if (room <= 0) { setMsg('The list is full (' + MAX_CH + ' channels).', 'err'); return; }
+    const use = add.slice(0, room); pushUndo(); channels.splice(start, 0, ...use);
+    setSel(use.map((_, k) => start + k), start); anchor = start; render();
+    setMsg('Pasted (inserted) ' + use.length + ' channel(s) above position #' + (start + 1) + '.', 'succ'); return;
+  }
+  const over = Math.min(add.length, Math.max(0, channels.length - start));
+  if (over > 0 && !(await askConfirm('The pasted channels will overwrite ' + over + ' existing channel(s) starting at #' + (start + 1) + '.\nContinue? (Ctrl+Z undoes it)'))) return;
+  pushUndo(); const placed = [];
+  for (let k = 0; k < add.length; k++) {
+    const pos = start + k;
+    if (pos < channels.length) channels[pos] = add[k]; else if (channels.length < MAX_CH) channels.push(add[k]); else break;
+    placed.push(pos);
+  }
+  setSel(placed, start); anchor = start; render();
+  setMsg('Pasted ' + placed.length + ' channel(s) starting at #' + (start + 1) + (placed.length < add.length ? ' (the rest did not fit in the list)' : '') + '.', 'succ');
+}
+async function doPaste(insert) {
+  let rows = null;
+  try { rows = parseClipText(await navigator.clipboard.readText()); } catch (e) { /* nema dozvole - koristi unutrašnji klipbord */ }
+  if (!rows && internalClip) rows = JSON.parse(internalClip);
+  pasteRows(rows, insert);
+}
+
+// ===== Prozori (Svojstva, Raw Memory, Diff) =====
+function openModal(title, node) {
+  $('mtitle').textContent = title; const b = $('mbody'); b.innerHTML = ''; b.appendChild(node); $('modal').hidden = false;
+}
+let propsIdx = -1;
+function closeModal() { $('modal').hidden = true; $('mbody').innerHTML = ''; propsIdx = -1; }
+$('mclose').onclick = closeModal;
+$('modal').addEventListener('mousedown', (e) => { if (e.target === $('modal')) closeModal(); });
+$('mbody').addEventListener('change', pushUndo, true);
+$('mbody').addEventListener('change', () => { render(); });
+
+function showProps() {
+  if (primary < 0 || !channels[primary]) return;
+  propsIdx = primary; buildProps();
+}
+function buildProps() {
+  const ch = channels[propsIdx]; if (!ch) { closeModal(); return; }
+  const box = document.createElement('div'); box.className = 'props';
+  const x = { idx: propsIdx, redo: () => { render(); buildProps(); } };
+  COLS.forEach(c => {
+    const lab = document.createElement('label'), sp = document.createElement('span');
+    sp.textContent = c.t + (c.s ? ' (' + c.s + ')' : ''); lab.appendChild(sp);
+    const v = c.cell(ch, x);
+    if (typeof v === 'string') { const t = document.createElement('b'); t.textContent = v; lab.appendChild(t); } else lab.appendChild(v);
+    box.appendChild(lab);
+  });
+  openModal('Channel properties #' + (propsIdx + 1) + ' - ' + ch.name, box);
+}
+// mapa poznatih bajtova zapisa kanala (pomeraji u zapisu od 85 B)
+const FMAP = [[0, 3, 'RX frequency (Hz)'], [14, 17, 'TX frequency (Hz)'], [28, 29, 'QT/DQT Dec - value'], [30, 30, 'QT/DQT Dec - type'],
+  [41, 42, 'QT/DQT Enc - value'], [43, 43, 'QT/DQT Enc - type'], [57, 57, 'Busy Inhibit + Rx signal Code'],
+  [58, 58, 'Scan + TX Power + Bandwidth + Special DCS + Compando'], [59, 59, 'scramble + Vague Subaudio'], [60, 60, 'FM/AM + tone types'],
+  [61, 61, 'PTT Push Code'], [62, 62, 'PTT Pop Code'], [63, 78, 'Name']];
+const fieldOf = (o) => { const f = FMAP.find(f => o >= f[0] && o <= f[1]); return f ? f[2] : ''; };
+const hx = (b) => b.toString(16).padStart(2, '0').toUpperCase();
+function rawRec(ch) { return encodeYsf([ch], new Uint8Array(HEADER_SIZE), new Uint8Array(TAIL_SIZE)).slice(HEADER_SIZE, HEADER_SIZE + REC_SIZE); }
+function hexGrid(bytes, other) {
+  const g = document.createElement('div'); g.className = 'hexgrid';
+  for (let r = 0; r < bytes.length; r += 16) {
+    const row = document.createElement('div'), off = document.createElement('span');
+    off.className = 'ho'; off.textContent = String(r).padStart(2, '0'); row.appendChild(off);
+    for (let i = r; i < Math.min(r + 16, bytes.length); i++) {
+      const s = document.createElement('span');
+      s.className = 'hb' + (fieldOf(i) ? ' k' : '') + (bytes[i] === 0 ? ' z' : '') + (other && other[i] !== bytes[i] ? ' d' : '');
+      s.textContent = hx(bytes[i]); s.title = 'byte ' + i + (fieldOf(i) ? ' - ' + fieldOf(i) : ''); row.appendChild(s);
+    }
+    g.appendChild(row);
+  }
+  return g;
+}
+function p(txt, cls) { const e = document.createElement('div'); e.textContent = txt; if (cls) e.className = cls; return e; }
+function showRaw() {
+  if (primary < 0 || !channels[primary]) return;
+  const ch = channels[primary], rec = rawRec(ch), box = document.createElement('div');
+  box.appendChild(p('Channel record in the .Ysf file: 85 bytes (offsets are decimal). Blue = known fields, grey = zeros.', 'hint'));
+  box.appendChild(hexGrid(rec));
+  const t = document.createElement('table'); t.className = 'ft';
+  FMAP.forEach(f => {
+    const tr = document.createElement('tr');
+    [f[0] === f[1] ? String(f[0]) : f[0] + '–' + f[1], f[2], Array.from(rec.slice(f[0], f[1] + 1)).map(hx).join(' ')].forEach(v => { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); });
+    t.appendChild(tr);
+  });
+  box.appendChild(t);
+  openModal('Raw Memory - channel #' + (primary + 1) + ' ' + ch.name, box);
+}
+function showDiffRaw() {
+  const a = selIdx(); if (a.length !== 2) return;
+  const A = rawRec(channels[a[0]]), B = rawRec(channels[a[1]]), box = document.createElement('div');
+  box.appendChild(p('#' + (a[0] + 1) + ' ' + channels[a[0]].name, 'dh')); box.appendChild(hexGrid(A, B));
+  box.appendChild(p('#' + (a[1] + 1) + ' ' + channels[a[1]].name, 'dh')); box.appendChild(hexGrid(B, A));
+  const t = document.createElement('table'); t.className = 'ft'; let n = 0;
+  for (let i = 0; i < REC_SIZE; i++) if (A[i] !== B[i]) {
+    n++; const tr = document.createElement('tr');
+    [String(i), fieldOf(i) || 'unknown', hx(A[i]) + '  →  ' + hx(B[i])].forEach(v => { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); });
+    t.appendChild(tr);
+  }
+  box.appendChild(n ? t : p('The records are identical.', 'hint'));
+  openModal('Diff Raw Memories - #' + (a[0] + 1) + ' and #' + (a[1] + 1) + ' (' + n + ' bytes differ)', box);
+}
+// uporedi sa drugim fajlom (.Ysf ili CSV)
+const DIFF_FIELDS = [['Name', c => c.name], ['RX', c => c.rx.toFixed(5)], ['TX', c => c.tx.toFixed(5)], ['Dec', c => toneLabel(c.rxT)], ['Enc', c => toneLabel(c.txT)],
+  ['TX Power', c => optLabel('pwr', c.pwr)], ['Bandwidth', c => optLabel('bw', c.bw)], ['Scan', c => optLabel('scan', c.scan)], ['Busy Inhibit', c => optLabel('busy', c.busy)],
+  ['Special DCS', c => optLabel('sdcs', c.sdcs)], ['Vague Subaudio', c => optLabel('onoff', c.vague)], ['Compando', c => optLabel('onoff', c.comp)],
+  ['scramble', c => optLabel('scr', c.scr)], ['FM/AM', c => optLabel('mode', c.am)], ['Rx signal Code', c => optLabel('rxsig', c.rxsig)],
+  ['PTT Push Code', c => optLabel('code', c.push)], ['PTT Pop Code', c => optLabel('code', c.pop)]];
+$('fDiff').onchange = async (e) => {
+  const file = e.target.files[0]; if (!file) return; e.target.value = '';
+  let other;
+  if (/\.ysf$/i.test(file.name)) other = decodeYsf(new Uint8Array(await file.arrayBuffer()));
+  else { const r = parseAnyCsv(await file.text()); if (!r.kind) { setMsg('The comparison file was not recognized.', 'err'); return; } other = r.channels; }
+  const box = document.createElement('div'), lines = []; let diffRows = 0;
+  const n = Math.max(channels.length, other.length);
+  for (let i = 0; i < n; i++) {
+    const a = channels[i], b = other[i];
+    if (!a) { lines.push('#' + (i + 1) + '  only in the other file: ' + b.name); diffRows++; continue; }
+    if (!b) { lines.push('#' + (i + 1) + '  only in this editor: ' + a.name); diffRows++; continue; }
+    const d = DIFF_FIELDS.filter(f => f[1](a) !== f[1](b)).map(f => f[0] + ': ' + f[1](a) + ' → ' + f[1](b));
+    if (d.length) { diffRows++; lines.push('#' + (i + 1) + '  ' + a.name + '  |  ' + d.join('  |  ')); }
+  }
+  box.appendChild(p(diffRows ? 'Channels differ in ' + diffRows + ' of ' + n + ' rows (compared by row number; "A → B" = this editor → ' + file.name + ').'
+    : 'No differences: all channels are the same.', 'hint'));
+  const pre = document.createElement('pre'); pre.textContent = lines.slice(0, 1000).join('\n') + (lines.length > 1000 ? '\n… (first 1000 shown)' : ''); box.appendChild(pre);
+  openModal('Comparison with file ' + file.name, box);
+};
+
+// ===== Iseci izabrano (samo označeni tekst u polju) =====
+let ctxSel = null;
+function captureTextSel(t) {
+  if (!t || t.tagName !== 'INPUT') return null;
+  let s = null, e = null, txt = '';
+  try { s = t.selectionStart; e = t.selectionEnd; if (s != null && e != null && e > s) txt = t.value.slice(s, e); } catch (_) {}
+  if (!txt) {   // number polja ne daju indekse - probaj preko selekcije pregledača
+    const g = String(window.getSelection ? window.getSelection() : '');
+    const at = g ? t.value.indexOf(g) : -1;
+    if (at >= 0) { s = at; e = at + g.length; txt = g; }
+  }
+  return txt ? { input: t, start: s, end: e, text: txt, value: t.value } : null;
+}
+async function cutText(info) {
+  if (!info) return;
+  const t = info.input;
+  if (!t.isConnected || t.value !== info.value) { setMsg('The field changed in the meantime - select the text again.', 'err'); return; }
+  const nv = info.value.slice(0, info.start) + info.value.slice(info.end);
+  if (t.type === 'number' && (nv === '' || isNaN(parseFloat(nv)))) { setMsg('Cannot cut: the field would be left empty or invalid.', 'err'); return; }
+  await writeClip(info.text);
+  t.value = nv; t.dispatchEvent(new Event('change', { bubbles: true }));   // upiši izmenu u kanal (i u Poništi)
+  setMsg('Cut selected text: "' + info.text + '".', 'succ');
+}
+
+// ===== Kontekstni meni (desni klik) =====
+function hideMenu() { $('ctx').hidden = true; }
+function showMenu(x, y) {
+  const m = $('ctx'); m.innerHTML = ''; m.className = x > innerWidth - 520 ? 'left' : '';
+  const n = sel.size, any = n > 0;
+  const add = (parent, label, hint, fn, on) => {
+    const d = document.createElement('div'); d.className = 'mi' + (on === false ? ' dis' : '');
+    const l = document.createElement('span'); l.textContent = label; d.appendChild(l);
+    if (hint) { const h = document.createElement('small'); h.textContent = hint; d.appendChild(h); }
+    if (on !== false) d.onclick = (e) => { e.stopPropagation(); hideMenu(); fn(); };
+    parent.appendChild(d);
+  };
+  const sep = () => { const d = document.createElement('div'); d.className = 'msep'; m.appendChild(d); };
+  const subm = (label, items, on) => {
+    const d = document.createElement('div'); d.className = 'mi has' + (on === false ? ' dis' : '');
+    const l = document.createElement('span'); l.textContent = label; d.appendChild(l);
+    const a = document.createElement('small'); a.textContent = '▸'; d.appendChild(a);
+    const s = document.createElement('div'); s.className = 'submenu';
+    items.forEach(it => add(s, it[0], it[2] || '', it[1], on));
+    d.appendChild(s); m.appendChild(d);
+  };
+  add(m, 'Properties', '', showProps, any);
+  add(m, 'Insert Row Above', 'Insert', () => insertAbove(false), channels.length < MAX_CH);
+  sep();
+  add(m, 'Cut', 'whole channel · Ctrl+X', doCut, any);
+  add(m, 'Cut selection', 'selected text only', () => cutText(ctxSel), !!ctxSel);
+  add(m, 'Copy', 'Ctrl+C', () => doCopy(false), any);
+  add(m, 'Copy portable', 'CSV text', () => doCopy(true), any);
+  add(m, 'Paste (overwrite)', 'Ctrl+V', () => doPaste(false), true);
+  add(m, 'Paste (insert above)', 'Ctrl+Shift+V', () => doPaste(true), true);
+  subm('Delete', [['Delete and shift up', delSel, 'Delete'], ['Reset to default (keep position)', blankSel, '']], any);
+  const sortItems = [];
+  Object.keys(SORTS).forEach(k => { sortItems.push([SORTS[k][0] + ' ▲ ascending', () => sortSel(k, false)]); sortItems.push([SORTS[k][0] + ' ▼ descending', () => sortSel(k, true)]); });
+  subm('Sort ' + n + ' channel' + (n === 1 ? '' : 's'), sortItems, n > 1);
+  sep();
+  add(m, 'Show Raw Memory', '', showRaw, any);
+  add(m, 'Diff Raw Memories (2 channels)', '', showDiffRaw, n === 2);
+  add(m, 'Diff against another file…', '', () => $('fDiff').click(), channels.length > 0);
+  m.hidden = false;
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.max(4, Math.min(x, innerWidth - r.width - 4)) + 'px';
+  m.style.top = Math.max(4, Math.min(y, innerHeight - r.height - 4)) + 'px';
+}
+$('tb').addEventListener('contextmenu', (e) => {
+  const tr = e.target.closest('tr'); if (!tr) return;
+  e.preventDefault();
+  const idx = +tr.dataset.idx;
+  ctxSel = captureTextSel(e.target);
+  if (!sel.has(idx)) { setSel([idx], idx); anchor = idx; paintSel(); } else primary = idx;
+  showMenu(e.clientX, e.clientY);
+});
+document.addEventListener('mousedown', (e) => { if (!$('ctx').hidden && !e.target.closest('#ctx')) hideMenu(); });
+window.addEventListener('blur', hideMenu); $('wrap').addEventListener('scroll', hideMenu);
+
+// ===== Prečice na tastaturi =====
+const isTyping = (t) => t && ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName);
+document.addEventListener('keydown', (e) => {
+  lastShift = e.shiftKey;
+  if (e.key === 'Escape') { hideMenu(); if (!$('confirm').hidden) { $('ccancel').click(); return; } if (!$('modal').hidden) closeModal(); return; }
+  if (isTyping(e.target) || !$('modal').hidden || !$('confirm').hidden) return;
+  const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+  if (mod && k === 'c') { e.preventDefault(); doCopy(false); }
+  else if (mod && k === 'x') { e.preventDefault(); doCut(); }
+  else if (mod && k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+  else if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+  else if (mod && k === 'a') { e.preventDefault(); setSel(lastVisible, lastVisible[0]); paintSel(); }
+  else if (e.key === 'Delete') { e.preventDefault(); delSel(); }
+  else if (e.key === 'Insert') { e.preventDefault(); insertAbove(false); }
+});
+document.addEventListener('keyup', (e) => { lastShift = e.shiftKey; });
+document.addEventListener('paste', (e) => {
+  if (isTyping(e.target) || !$('modal').hidden || !$('confirm').hidden) return;
+  e.preventDefault();
+  let rows = parseClipText(e.clipboardData ? e.clipboardData.getData('text') : '');
+  if (!rows && internalClip) rows = JSON.parse(internalClip);
+  pasteRows(rows, lastShift);
+});
+
+// ===== Dugmad =====
+$('bInsEmpty').onclick = () => insertAbove(false);
+$('bInsCopy').onclick = () => insertAbove(true);
+$('bDel').onclick = delSel;
+$('bUp').onclick = () => moveSel(-1);
+$('bDn').onclick = () => moveSel(1);
+$('bUndo').onclick = undo;
+$('bRedo').onclick = redo;
+$('bNew').onclick = initEmpty;
+const skippedNote = (n) => n ? ' Skipped ' + n + ' empty rows without an RX frequency.' : '';
+$('bSaveYsf').onclick = () => {
+  const out = validChannels();
+  if (!out.length) { setMsg('No channel has an RX frequency - nothing to save.', 'err'); return; }
+  const nm = (fileBase || DEFAULT_NAME) + '.Ysf';
+  download(nm, encodeYsf(out, rawHeader, rawTail));
+  setMsg('Saved file ' + nm + ' (exactly 47,046 bytes - ready for the CPS).' + skippedNote(channels.length - out.length), 'succ');
+};
+const bChirp = $('bCsvChirp');
+if (bChirp) bChirp.onclick = () => {
+  const out = validChannels();
+  if (!out.length) { setMsg('No channel has an RX frequency - nothing to export.', 'err'); return; }
+  download((fileBase || 'Radtel_RT-920_export') + '.csv', toChirpCsv(out), 'text/csv');
+  setMsg('Exported ' + out.length + ' channels to CSV.' + skippedNote(channels.length - out.length), 'succ');
+};
+
+</script>
+<script>
+const COLS = [
+  { t: '#', cell: C.idx1 },
+  { t: 'Name', s: 'up to 16 characters', cell: C.name },
+  { t: 'RX Freq. (MHz)', cell: C.rx },
+  { t: 'TX Freq. (MHz)', cell: C.tx },
+  { t: 'Direction', s: 'derived from RX/TX', cell: C.dir },
+  { t: 'Offset (MHz)', s: 'derived from RX/TX', cell: C.off },
+  { t: 'QT/DQT Dec - type', s: 'RX tone', cell: C.toneType('rxT') },
+  { t: 'QT/DQT Dec - value', cell: C.toneVal('rxT') },
+  { t: 'QT/DQT Enc - type', s: 'TX tone', cell: C.toneType('txT') },
+  { t: 'QT/DQT Enc - value', cell: C.toneVal('txT') },
+  { t: 'TX Power', cell: C.prop('pwr', OPT.pwr) },
+  { t: 'Bandwidth', cell: C.prop('bw', OPT.bw) },
+  { t: 'Scan', cell: C.prop('scan', OPT.scan) },
+  { t: 'Busy Inhibit', cell: C.prop('busy', OPT.busy) },
+  { t: 'Special DCS', cell: C.prop('sdcs', OPT.sdcs) },
+  { t: 'Vague Subaudio', cell: C.prop('vague', OPT.onoff) },
+  { t: 'Compando', cell: C.prop('comp', OPT.onoff) },
+  { t: 'scramble', cell: C.prop('scr', OPT.scr) },
+  { t: 'FM/AM', cell: C.prop('am', OPT.mode) },
+  { t: 'Rx signal Code', cell: C.prop('rxsig', OPT.rxsig) },
+  { t: 'PTT Push Code', cell: C.prop('push', OPT.code) },
+  { t: 'PTT Pop Code', cell: C.prop('pop', OPT.code) }
+];
+
+</script>
+<script>
+buildHead();
+initEmpty();
+</script>
+</body>
+</html>
