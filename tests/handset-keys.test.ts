@@ -3,7 +3,6 @@ import {
   encodeHandsetKeysToEeprom,
   decodeHandsetKeysFromEeprom,
   DEFAULT_HANDSET_KEYS,
-  EEPROM_KEYS_ADDRESS,
   EEPROM_KEYS_LENGTH
 } from '../src/codecs/eeprom-codec';
 import { HandsetKeySettings } from '../src/types/radio';
@@ -69,7 +68,7 @@ describe('Handset & Programmable Keys Codec', () => {
     };
 
     const fresh = createNewCodeplug();
-    const encodedYsf = encodeYsf(fresh.channels, fresh.rawHeader, fresh.rawTail, customKeys);
+    const encodedYsf = encodeYsf(fresh.channels, fresh.image, { keys: customKeys });
 
     // Verify raw byte offsets directly in the tail
     expect(encodedYsf[TAIL_OFFSET + TAIL_KEYS_OFFSET + 0]).toBe(0x04);
@@ -81,11 +80,11 @@ describe('Handset & Programmable Keys Codec', () => {
 
     // Decode and verify roundtrip
     const decoded = decodeYsf(encodedYsf);
-    expect(decoded.keys).toBeDefined();
-    expect(decoded.keys.key1Short).toBe(0x04);
-    expect(decoded.keys.key1Long).toBe(0x02);
-    expect(decoded.keys.key2Short).toBe(0x00);
-    expect(decoded.keys.key3Short).toBe(0x0C);
-    expect(decoded.keys.key3Long).toBe(0x09);
+    expect(decoded.extras.keys).toBeDefined();
+    expect(decoded.extras.keys.key1Short).toBe(0x04);
+    expect(decoded.extras.keys.key1Long).toBe(0x02);
+    expect(decoded.extras.keys.key2Short).toBe(0x00);
+    expect(decoded.extras.keys.key3Short).toBe(0x0C);
+    expect(decoded.extras.keys.key3Long).toBe(0x09);
   });
 });

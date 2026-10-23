@@ -1,340 +1,204 @@
-import React, { useState } from 'react';
-import { RadioChannel, ToneSetting, ToneType } from '../types/radio';
-import { CTCSS_TONES, DCS_CODES, formatTone, parseToneString } from '../codecs/tone-tables';
-import { Copy, Trash2, Edit3, MoreHorizontal, AlertTriangle } from 'lucide-react';
+import React, { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { MoreHorizontal, Trash2 } from 'lucide-react';
+import { Duplex, RadioChannel } from '../types/radio';
+import { bandOf } from '../codecs/band-plans';
+import { isChannelEmpty, withDuplex, withOffset, withRxFreq, withTxFreq } from '../codecs/channel';
+import { IssueSeverity } from '../codecs/validation';
+import { CellSelect, FreqInput, NameInput, OffsetInput, ToneSelect } from './CellEditors';
 
-interface ChannelGridProps {
+const ROW_HEIGHT = 32;
+const OVERSCAN = 8;
+
+const DUPLEX_OPTIONS: [Duplex, string][] = [['OFF', 'Simplex'], ['+', '+ Offset'], ['-', '− Offset'], ['SPLIT', 'Split']];
+const POWER_OPTIONS: [0 | 1, string][] = [[1, 'High'], [0, 'Low']];
+const BW_OPTIONS: [0 | 1, string][] = [[1, 'Wide'], [0, 'Narrow']];
+const SCAN_OPTIONS: [0 | 1, string][] = [[1, 'ADD'], [0, 'DEL']];
+const MODE_OPTIONS: [0 | 1, string][] = [[0, 'FM'], [1, 'AM']];
+
+const BAND_COLOR = { vhf: 'text-cyan-400', uhf: 'text-purple-400', air: 'text-amber-400', other: 'text-slate-300' };
+const ISSUE_DOT: Record<IssueSeverity, string> = { error: 'bg-rose-500', warning: 'bg-amber-400', info: 'bg-sky-500' };
+
+export interface ChannelGridProps {
   channels: RadioChannel[];
-  onChannelChange: (index: number, updated: RadioChannel) => void;
-  onClearChannel: (index: number) => void;
-  onCopyChannel: (channel: RadioChannel) => void;
-  onPasteChannel: (index: number) => void;
-  hasClipboard: boolean;
-  onOpenDetails: (channel: RadioChannel) => void;
-  searchQuery: string;
-  bandFilter: string;
+  visibleIndices: number[];
+  selected: Set<number>;
+  issueLevels: Map<number, { severity: IssueSeverity; message: string }>;
+  onRowMouseDown: (index: number, e: React.MouseEvent) => void;
+  onChange: (index: number, updated: RadioChannel, coalesceKey?: string) => void;
+  onOpenDetails: (index: number) => void;
+  onClear: (index: number) => void;
+  /** Change `nonce` to scroll the given channel index into view. */
+  scrollTarget?: { index: number; nonce: number };
 }
 
-export const ChannelGrid: React.FC<ChannelGridProps> = ({
-  channels,
-  onChannelChange,
-  onClearChannel,
-  onCopyChannel,
-  onPasteChannel,
-  hasClipboard,
-  onOpenDetails,
-  searchQuery,
-  bandFilter
-}) => {
-  const [selectedRow, setSelectedRow] = useState<number | null>(null);
+interface RowProps {
+  ch: RadioChannel;
+  index: number;
+  selected: boolean;
+  issue?: { severity: IssueSeverity; message: string };
+  onRowMouseDown: ChannelGridProps['onRowMouseDown'];
+  onChange: ChannelGridProps['onChange'];
+  onOpenDetails: ChannelGridProps['onOpenDetails'];
+  onClear: ChannelGridProps['onClear'];
+}
 
-  // Filter channels based on search and band
-  const filteredChannels = channels.filter((ch) => {
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      const match =
-        ch.name.toLowerCase().includes(q) ||
-        (ch.rxFreq > 0 && ch.rxFreq.toFixed(4).includes(q)) ||
-        (ch.txFreq > 0 && ch.txFreq.toFixed(4).includes(q)) ||
-        ch.id.toString().includes(q);
-      if (!match) return false;
-    }
-
-    if (bandFilter === 'active') {
-      return ch.rxFreq > 0;
-    }
-    if (bandFilter === 'vhf') {
-      return ch.rxFreq >= 134 && ch.rxFreq <= 176;
-    }
-    if (bandFilter === 'uhf') {
-      return ch.rxFreq >= 400 && ch.rxFreq <= 475;
-    }
-    if (bandFilter === 'air') {
-      return ch.rxFreq >= 108 && ch.rxFreq < 137;
-    }
-    return true;
-  });
-
-  const handleRxFreqChange = (index: number, valStr: string) => {
-    const rx = parseFloat(valStr) || 0;
-    const ch = channels[index];
-    let tx = rx;
-    if (ch.duplex === '+') tx = Math.round((rx + ch.offset) * 1e5) / 1e5;
-    if (ch.duplex === '-') tx = Math.round((rx - ch.offset) * 1e5) / 1e5;
-    onChannelChange(index, { ...ch, rxFreq: rx, txFreq: tx });
-  };
-
-  const handleOffsetChange = (index: number, valStr: string) => {
-    const off = parseFloat(valStr) || 0;
-    const ch = channels[index];
-    let tx = ch.rxFreq;
-    if (ch.duplex === '+') tx = Math.round((ch.rxFreq + off) * 1e5) / 1e5;
-    if (ch.duplex === '-') tx = Math.round((ch.rxFreq - off) * 1e5) / 1e5;
-    onChannelChange(index, { ...ch, offset: off, txFreq: tx });
-  };
-
-  const handleDuplexChange = (index: number, duplex: '+' | '-' | 'OFF' | 'SPLIT') => {
-    const ch = channels[index];
-    let tx = ch.rxFreq;
-    if (duplex === '+') tx = Math.round((ch.rxFreq + ch.offset) * 1e5) / 1e5;
-    if (duplex === '-') tx = Math.round((ch.rxFreq - ch.offset) * 1e5) / 1e5;
-    onChannelChange(index, { ...ch, duplex, txFreq: tx });
-  };
-
-  const isOutOfBand = (freq: number, isTx: boolean): boolean => {
-    if (freq <= 0) return false;
-    if (!isTx && freq >= 108 && freq < 137) return false; // Airband RX allowed
-    const isVhf = freq >= 134 && freq <= 176;
-    const isUhf = freq >= 400 && freq <= 475;
-    return !isVhf && !isUhf;
-  };
+const ChannelRow = memo(function ChannelRow({ ch, index, selected, issue, onRowMouseDown, onChange, onOpenDetails, onClear }: RowProps) {
+  const empty = isChannelEmpty(ch);
+  const set = (patch: Partial<RadioChannel>, key?: string) => onChange(index, { ...ch, ...patch }, key);
+  const n = ch.id;
 
   return (
-    <div className="flex-1 overflow-auto bg-slate-950 font-mono text-xs">
-      <table className="w-full border-collapse border border-slate-800 text-left">
-        <thead className="sticky top-0 bg-slate-900 text-slate-400 font-semibold border-b border-slate-800 z-10 shadow-sm">
-          <tr>
-            <th className="px-3 py-2 w-12 border-r border-slate-800 text-center">#</th>
-            <th className="px-3 py-2 w-44 border-r border-slate-800">Channel Name</th>
-            <th className="px-3 py-2 w-32 border-r border-slate-800">RX Freq (MHz)</th>
-            <th className="px-3 py-2 w-32 border-r border-slate-800">TX Freq (MHz)</th>
-            <th className="px-2 py-2 w-20 border-r border-slate-800 text-center">Duplex</th>
-            <th className="px-3 py-2 w-24 border-r border-slate-800">Offset</th>
-            <th className="px-3 py-2 w-36 border-r border-slate-800">TX Tone (Enc)</th>
-            <th className="px-3 py-2 w-36 border-r border-slate-800">RX Tone (Dec)</th>
-            <th className="px-2 py-2 w-20 border-r border-slate-800 text-center">Power</th>
-            <th className="px-2 py-2 w-24 border-r border-slate-800 text-center">Bandwidth</th>
-            <th className="px-2 py-2 w-16 border-r border-slate-800 text-center">Scan</th>
-            <th className="px-2 py-2 w-16 border-r border-slate-800 text-center">Mode</th>
-            <th className="px-3 py-2 w-24 text-center">Actions</th>
+    <tr
+      style={{ height: ROW_HEIGHT }}
+      onMouseDown={(e) => onRowMouseDown(index, e)}
+      aria-selected={selected}
+      className={`border-b border-slate-800/60 ${selected ? 'bg-sky-950/50' : empty ? 'text-slate-600 hover:bg-slate-900/30' : 'text-slate-200 hover:bg-slate-900/60'}`}
+    >
+      <td className={`px-2 border-r border-slate-800 text-center font-semibold select-none ${selected ? 'text-sky-300 border-l-2 border-l-sky-500' : 'text-slate-400'}`}>
+        <span className="inline-flex items-center gap-1">
+          {issue && <span title={issue.message} className={`w-1.5 h-1.5 rounded-full ${ISSUE_DOT[issue.severity]}`} />}
+          {n}
+        </span>
+      </td>
+      <td className="px-1 border-r border-slate-800">
+        <NameInput ariaLabel={`Channel ${n} name`} value={ch.name} placeholder={empty ? '' : 'Name'} onChange={(name) => set({ name }, `name:${n}`)} />
+      </td>
+      <td className="px-1 border-r border-slate-800">
+        <FreqInput ariaLabel={`Channel ${n} RX frequency`} value={ch.rxFreq} className={BAND_COLOR[bandOf(ch.rxFreq)]} onCommit={(mhz) => onChange(index, withRxFreq(ch, mhz))} />
+      </td>
+      <td className="px-1 border-r border-slate-800">
+        {ch.duplex === 'SPLIT' ? (
+          <FreqInput ariaLabel={`Channel ${n} TX frequency`} value={ch.txFreq} className={BAND_COLOR[bandOf(ch.txFreq)]} allowZero={false} onCommit={(mhz) => onChange(index, withTxFreq(ch, mhz))} />
+        ) : (
+          <span className="px-1.5 font-mono text-slate-400">{empty ? '' : (ch.txFreq || ch.rxFreq).toFixed(5)}</span>
+        )}
+      </td>
+      <td className="px-1 border-r border-slate-800">
+        <CellSelect ariaLabel={`Channel ${n} duplex`} value={ch.duplex} options={DUPLEX_OPTIONS} onChange={(d) => onChange(index, withDuplex(ch, d))} />
+      </td>
+      <td className="px-1 border-r border-slate-800">
+        {ch.duplex === 'SPLIT' ? (
+          <span className="px-1.5 font-mono text-slate-500">{ch.offset > 0 ? ch.offset.toFixed(3) : ''}</span>
+        ) : (
+          <OffsetInput ariaLabel={`Channel ${n} offset`} value={ch.offset} disabled={ch.duplex === 'OFF'} onCommit={(mhz) => onChange(index, withOffset(ch, mhz))} />
+        )}
+      </td>
+      <td className="px-1 border-r border-slate-800">
+        <ToneSelect ariaLabel={`Channel ${n} TX tone`} value={ch.txTone} onChange={(txTone) => set({ txTone })} />
+      </td>
+      <td className="px-1 border-r border-slate-800">
+        <ToneSelect ariaLabel={`Channel ${n} RX tone`} value={ch.rxTone} onChange={(rxTone) => set({ rxTone })} />
+      </td>
+      <td className="px-1 border-r border-slate-800">
+        <CellSelect ariaLabel={`Channel ${n} power`} value={ch.power} options={POWER_OPTIONS} onChange={(power) => set({ power })} />
+      </td>
+      <td className="px-1 border-r border-slate-800">
+        <CellSelect ariaLabel={`Channel ${n} bandwidth`} value={ch.bandwidth} options={BW_OPTIONS} onChange={(bandwidth) => set({ bandwidth })} />
+      </td>
+      <td className="px-1 border-r border-slate-800">
+        <CellSelect ariaLabel={`Channel ${n} scan`} value={ch.scan} options={SCAN_OPTIONS} onChange={(scan) => set({ scan })} />
+      </td>
+      <td className="px-1 border-r border-slate-800">
+        <CellSelect ariaLabel={`Channel ${n} mode`} value={ch.mode} options={MODE_OPTIONS} onChange={(mode) => set({ mode })} />
+      </td>
+      <td className="px-1 text-center">
+        <div className="flex items-center justify-center gap-0.5">
+          <button
+            onClick={() => onOpenDetails(index)}
+            className="p-1 text-slate-400 hover:text-sky-400 hover:bg-slate-800 rounded"
+            title="Advanced channel settings"
+            aria-label={`Channel ${n} advanced settings`}
+          >
+            <MoreHorizontal className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => onClear(index)}
+            disabled={empty}
+            className="p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded disabled:opacity-30"
+            title="Clear channel"
+            aria-label={`Clear channel ${n}`}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+});
+
+const HEADERS: [string, string][] = [
+  ['#', 'w-14 text-center'], ['Name', 'w-40'], ['RX MHz', 'w-28'], ['TX MHz', 'w-28'], ['Duplex', 'w-24'],
+  ['Offset', 'w-20'], ['TX Tone (Enc)', 'w-32'], ['RX Tone (Dec)', 'w-32'], ['Power', 'w-20'],
+  ['Bandwidth', 'w-24'], ['Scan', 'w-16'], ['Mode', 'w-16'], ['', 'w-16']
+];
+
+export const ChannelGrid: React.FC<ChannelGridProps> = (props) => {
+  const { channels, visibleIndices, selected, issueLevels, scrollTarget } = props;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewport, setViewport] = useState(600);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setViewport(el.clientHeight));
+    ro.observe(el);
+    setViewport(el.clientHeight);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!scrollTarget || !scrollRef.current) return;
+    const pos = visibleIndices.indexOf(scrollTarget.index);
+    if (pos === -1) return;
+    const el = scrollRef.current;
+    const top = pos * ROW_HEIGHT;
+    const headerH = 34;
+    if (top < el.scrollTop || top + ROW_HEIGHT > el.scrollTop + el.clientHeight - headerH) {
+      el.scrollTop = Math.max(0, top - el.clientHeight / 3);
+    }
+  }, [scrollTarget?.nonce]);
+
+  const start = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const end = Math.min(visibleIndices.length, Math.ceil((scrollTop + viewport) / ROW_HEIGHT) + OVERSCAN);
+  const rows = visibleIndices.slice(start, end);
+
+  return (
+    <div
+      ref={scrollRef}
+      onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
+      className="flex-1 overflow-auto bg-slate-950 text-xs"
+      data-testid="channel-grid"
+    >
+      <table className="w-full border-collapse text-left table-fixed min-w-[1180px]">
+        <thead className="sticky top-0 bg-slate-900 text-slate-400 font-semibold z-10 shadow-sm">
+          <tr className="border-b border-slate-800" style={{ height: 34 }}>
+            {HEADERS.map(([label, cls], i) => (
+              <th key={i} className={`px-2 border-r border-slate-800 ${cls}`}>{label}</th>
+            ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-800/60">
-          {filteredChannels.map((ch) => {
-            const rawIndex = ch.id - 1;
-            const isEmpty = ch.rxFreq <= 0;
-            const isSelected = selectedRow === ch.id;
-            const outOfBand = isOutOfBand(ch.rxFreq, false) || isOutOfBand(ch.txFreq, true);
-
-            return (
-              <tr
-                key={ch.id}
-                onClick={() => setSelectedRow(ch.id)}
-                className={`transition-colors cursor-pointer ${
-                  isSelected
-                    ? 'bg-sky-950/40 border-l-2 border-l-sky-500'
-                    : isEmpty
-                    ? 'text-slate-600 hover:bg-slate-900/30'
-                    : 'text-slate-200 hover:bg-slate-900/60'
-                }`}
-              >
-                {/* ID */}
-                <td className="px-3 py-1.5 border-r border-slate-800 text-center text-slate-400 font-semibold select-none">
-                  {ch.id}
-                </td>
-
-                {/* Name */}
-                <td className="px-2 py-1 border-r border-slate-800">
-                  <input
-                    type="text"
-                    maxLength={16}
-                    value={ch.name}
-                    onChange={(e) => onChannelChange(rawIndex, { ...ch, name: e.target.value })}
-                    placeholder={isEmpty ? '—' : 'Channel Name'}
-                    className="w-full bg-transparent px-1.5 py-0.5 rounded focus:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 font-sans text-xs"
-                  />
-                </td>
-
-                {/* RX Frequency */}
-                <td className="px-2 py-1 border-r border-slate-800">
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      step="0.00125"
-                      value={ch.rxFreq > 0 ? ch.rxFreq : ''}
-                      onChange={(e) => handleRxFreqChange(rawIndex, e.target.value)}
-                      placeholder="0.00000"
-                      className={`w-full bg-transparent px-1.5 py-0.5 rounded focus:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs ${
-                        ch.rxFreq >= 134 && ch.rxFreq <= 176
-                          ? 'text-cyan-400'
-                          : ch.rxFreq >= 400 && ch.rxFreq <= 475
-                          ? 'text-purple-400'
-                          : ch.rxFreq >= 108 && ch.rxFreq < 137
-                          ? 'text-amber-400'
-                          : 'text-slate-300'
-                      }`}
-                    />
-                    {outOfBand && (
-                      <span title="Frequency out of guaranteed factory range">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                      </span>
-                    )}
-                  </div>
-                </td>
-
-                {/* TX Frequency */}
-                <td className="px-2 py-1 border-r border-slate-800">
-                  <input
-                    type="number"
-                    step="0.00125"
-                    value={ch.txFreq > 0 ? ch.txFreq : ''}
-                    onChange={(e) => {
-                      const tx = parseFloat(e.target.value) || 0;
-                      onChannelChange(rawIndex, { ...ch, txFreq: tx });
-                    }}
-                    placeholder="0.00000"
-                    disabled={ch.duplex !== 'OFF' && ch.duplex !== 'SPLIT'}
-                    className={`w-full bg-transparent px-1.5 py-0.5 rounded focus:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs ${
-                      ch.duplex !== 'OFF' ? 'text-slate-400 cursor-not-allowed' : 'text-slate-300'
-                    }`}
-                  />
-                </td>
-
-                {/* Duplex */}
-                <td className="px-1 py-1 border-r border-slate-800 text-center">
-                  <select
-                    value={ch.duplex}
-                    onChange={(e) => handleDuplexChange(rawIndex, e.target.value as any)}
-                    className="bg-transparent px-1 py-0.5 rounded text-xs focus:bg-slate-800 focus:outline-none"
-                  >
-                    <option value="OFF" className="bg-slate-800">Simplex</option>
-                    <option value="+" className="bg-slate-800">+ Offset</option>
-                    <option value="-" className="bg-slate-800">- Offset</option>
-                    <option value="SPLIT" className="bg-slate-800">Split</option>
-                  </select>
-                </td>
-
-                {/* Offset */}
-                <td className="px-2 py-1 border-r border-slate-800">
-                  <input
-                    type="number"
-                    step="0.005"
-                    value={ch.offset > 0 ? ch.offset : ''}
-                    onChange={(e) => handleOffsetChange(rawIndex, e.target.value)}
-                    placeholder="0.00000"
-                    disabled={ch.duplex === 'OFF'}
-                    className="w-full bg-transparent px-1.5 py-0.5 rounded focus:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs"
-                  />
-                </td>
-
-                {/* TX Tone */}
-                <td className="px-2 py-1 border-r border-slate-800">
-                  <input
-                    type="text"
-                    value={formatTone(ch.txTone)}
-                    onChange={(e) => {
-                      const tone = parseToneString(e.target.value);
-                      onChannelChange(rawIndex, { ...ch, txTone: tone });
-                    }}
-                    placeholder="None / 88.5 / D023N"
-                    className="w-full bg-transparent px-1.5 py-0.5 rounded focus:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs"
-                  />
-                </td>
-
-                {/* RX Tone */}
-                <td className="px-2 py-1 border-r border-slate-800">
-                  <input
-                    type="text"
-                    value={formatTone(ch.rxTone)}
-                    onChange={(e) => {
-                      const tone = parseToneString(e.target.value);
-                      onChannelChange(rawIndex, { ...ch, rxTone: tone });
-                    }}
-                    placeholder="None / 88.5 / D023N"
-                    className="w-full bg-transparent px-1.5 py-0.5 rounded focus:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs"
-                  />
-                </td>
-
-                {/* Power */}
-                <td className="px-1 py-1 border-r border-slate-800 text-center">
-                  <select
-                    value={ch.power}
-                    onChange={(e) => onChannelChange(rawIndex, { ...ch, power: parseInt(e.target.value) as 0 | 1 })}
-                    className="bg-transparent px-1 py-0.5 rounded text-xs focus:bg-slate-800 focus:outline-none font-sans"
-                  >
-                    <option value={1} className="bg-slate-800">High</option>
-                    <option value={0} className="bg-slate-800">Low</option>
-                  </select>
-                </td>
-
-                {/* Bandwidth */}
-                <td className="px-1 py-1 border-r border-slate-800 text-center">
-                  <select
-                    value={ch.bandwidth}
-                    onChange={(e) => onChannelChange(rawIndex, { ...ch, bandwidth: parseInt(e.target.value) as 0 | 1 })}
-                    className="bg-transparent px-1 py-0.5 rounded text-xs focus:bg-slate-800 focus:outline-none font-sans"
-                  >
-                    <option value={1} className="bg-slate-800">Wide (25k)</option>
-                    <option value={0} className="bg-slate-800">Narrow (12.5k)</option>
-                  </select>
-                </td>
-
-                {/* Scan */}
-                <td className="px-1 py-1 border-r border-slate-800 text-center">
-                  <select
-                    value={ch.scan}
-                    onChange={(e) => onChannelChange(rawIndex, { ...ch, scan: parseInt(e.target.value) as 0 | 1 })}
-                    className="bg-transparent px-1 py-0.5 rounded text-xs focus:bg-slate-800 focus:outline-none font-sans"
-                  >
-                    <option value={1} className="bg-slate-800">ADD</option>
-                    <option value={0} className="bg-slate-800">DEL</option>
-                  </select>
-                </td>
-
-                {/* Mode */}
-                <td className="px-1 py-1 border-r border-slate-800 text-center">
-                  <select
-                    value={ch.mode}
-                    onChange={(e) => onChannelChange(rawIndex, { ...ch, mode: parseInt(e.target.value) as 0 | 1 })}
-                    className="bg-transparent px-1 py-0.5 rounded text-xs focus:bg-slate-800 focus:outline-none font-sans"
-                  >
-                    <option value={0} className="bg-slate-800">FM</option>
-                    <option value={1} className="bg-slate-800">AM</option>
-                  </select>
-                </td>
-
-                {/* Actions */}
-                <td className="px-2 py-1 text-center">
-                  <div className="flex items-center justify-center gap-1">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpenDetails(ch);
-                      }}
-                      className="p-1 text-slate-400 hover:text-sky-400 hover:bg-slate-800 rounded transition"
-                      title="Advanced Channel Settings"
-                    >
-                      <MoreHorizontal className="w-3.5 h-3.5" />
-                    </button>
-
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onCopyChannel(ch);
-                      }}
-                      className="p-1 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded transition"
-                      title="Copy Channel"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                    </button>
-
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onClearChannel(rawIndex);
-                      }}
-                      className="p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded transition"
-                      title="Clear Channel"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
+        <tbody>
+          {start > 0 && <tr style={{ height: start * ROW_HEIGHT }} aria-hidden />}
+          {rows.map((index) => (
+            <ChannelRow
+              key={index}
+              ch={channels[index]}
+              index={index}
+              selected={selected.has(index)}
+              issue={issueLevels.get(index + 1)}
+              onRowMouseDown={props.onRowMouseDown}
+              onChange={props.onChange}
+              onOpenDetails={props.onOpenDetails}
+              onClear={props.onClear}
+            />
+          ))}
+          {end < visibleIndices.length && <tr style={{ height: (visibleIndices.length - end) * ROW_HEIGHT }} aria-hidden />}
         </tbody>
       </table>
+      {visibleIndices.length === 0 && (
+        <div className="p-10 text-center text-slate-500">No channels match the current filter.</div>
+      )}
     </div>
   );
 };

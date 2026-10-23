@@ -1,6 +1,11 @@
 import { RadioChannel, ToneSetting, ToneType } from '../types/radio';
-import { createBlankChannel } from './ysf-codec';
-import { createEmptyTone, CTCSS_TONES, DCS_CODES, nearestCtcss, parseToneString } from './tone-tables';
+import { createBlankChannel, deriveDuplex, isChannelEmpty, roundMHz } from './channel';
+import { DCS_CODES, nearestCtcss, parseToneString, sameTone, toneLabel } from './tone-tables';
+import { escapeCsvCell, parseCsvRows, rowsToObjects } from './csv-parse';
+import { applyPlacement, planPlacement, PlacementMode, PlacementPlan } from './placement';
+import { toRadioAscii } from './text';
+
+export { parseCsvRows } from './csv-parse';
 
 export const CHIRP_COLUMNS = [
   'Location', 'Name', 'Frequency', 'Duplex', 'Offset', 'Tone', 'rToneFreq', 'cToneFreq',
@@ -8,316 +13,304 @@ export const CHIRP_COLUMNS = [
   'Power', 'Comment', 'URCALL', 'RPT1CALL', 'RPT2CALL', 'DVCODE'
 ];
 
+/** Column names and value labels used by the OEM CPS CSV export. */
 export const OEM_COLUMNS = [
   'NO.', 'RX Freq.', 'TX Freq.', 'QT/DQT Dec', 'QT/DQT Enc', 'TX Power', 'Bandwidth',
   'Scan', 'Busy Inhibit', 'Special DCS', 'Vague Subaudio', 'Compando', 'scramble',
   'FM/AM', 'Rx signal Code', 'PTT Push Code', 'PTT Pop Code', 'Name'
 ];
 
-function escapeCsvCell(val: string | number | undefined): string {
-  const str = String(val ?? '');
-  if (/[",\r\n]/.test(str)) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
+const codeLabels = ['OFF', 'ID', ...Array.from({ length: 30 }, (_, i) => `Code form-${i + 1}`)];
+export const OEM_LABELS = {
+  power: ['Low', 'High'],
+  bandwidth: ['Narrow', 'Wide'],
+  scan: ['DEL', 'ADD'],
+  busy: ['OFF', 'DQT', 'CAT'],
+  specialDcs: ['OFF', 'Special DCS 1', 'Special DCS 2', 'Special DCS 3', 'Special DCS 4'],
+  onOff: ['OFF', 'ON'],
+  scrambler: ['OFF', ...Array.from({ length: 8 }, (_, i) => `scramble ${i + 1}`)],
+  mode: ['FM', 'AM'],
+  rxSig: ['OFF', 'DTMF', 'FSK', 'FSK DTMF'],
+  code: codeLabels
+};
+
+/** Label for a value; values outside the list round-trip as "? (n)". */
+function oemLabel(labels: string[], value: number): string {
+  return labels[value] ?? `? (${value})`;
 }
 
-export function parseCsvRows(text: string): string[][] {
-  const clean = text.replace(/^\uFEFF/, '').trim();
-  const rows: string[][] = [];
-  let currentRow: string[] = [];
-  let currentCell = '';
-  let insideQuote = false;
+function oemValue(labels: string[], label: string, fallback: number): number {
+  const clean = (label || '').trim().toLowerCase();
+  if (!clean) return fallback;
+  const idx = labels.findIndex((l) => l.toLowerCase() === clean);
+  if (idx !== -1) return idx;
+  const m = /^\?\s*\((\d+)\)$/.exec(clean);
+  return m ? parseInt(m[1], 10) : fallback;
+}
 
-  for (let i = 0; i < clean.length; i++) {
-    const char = clean[i];
-    const nextChar = clean[i + 1];
+// ---------- CHIRP ----------
 
-    if (insideQuote) {
-      if (char === '"') {
-        if (nextChar === '"') {
-          currentCell += '"';
-          i++;
-        } else {
-          insideQuote = false;
-        }
-      } else {
-        currentCell += char;
-      }
-    } else {
-      if (char === '"') {
-        insideQuote = true;
-      } else if (char === ',') {
-        currentRow.push(currentCell.trim());
-        currentCell = '';
-      } else if (char === '\r') {
-        // Handle CRLF
-        if (nextChar === '\n') i++;
-        currentRow.push(currentCell.trim());
-        rows.push(currentRow);
-        currentRow = [];
-        currentCell = '';
-      } else if (char === '\n') {
-        currentRow.push(currentCell.trim());
-        rows.push(currentRow);
-        currentRow = [];
-        currentCell = '';
-      } else {
-        currentCell += char;
-      }
-    }
+export function chirpToneFields(ch: RadioChannel) {
+  const txT = ch.txTone;
+  const rxT = ch.rxTone;
+  const f = {
+    toneMode: '', rTone: '88.5', cTone: '88.5', dtcsCode: '023', rxDtcsCode: '023', dtcsPol: 'NN', crossMode: 'Tone->Tone'
+  };
+  const pol = (t: ToneSetting) => (t.type === 3 ? 'R' : 'N');
+
+  if (txT.type === 0 && rxT.type === 0) {
+    f.toneMode = '';
+  } else if (txT.type === 1 && rxT.type === 0) {
+    f.toneMode = 'Tone';
+    f.rTone = txT.ctcss.toFixed(1);
+  } else if (txT.type === 1 && rxT.type === 1 && sameTone(txT, rxT)) {
+    f.toneMode = 'TSQL';
+    f.rTone = txT.ctcss.toFixed(1);
+    f.cTone = rxT.ctcss.toFixed(1);
+  } else if (txT.type >= 2 && rxT.type >= 2 && txT.dcs === rxT.dcs) {
+    f.toneMode = 'DTCS';
+    f.dtcsCode = txT.dcs;
+    f.rxDtcsCode = rxT.dcs;
+    f.dtcsPol = pol(txT) + pol(rxT);
+  } else {
+    f.toneMode = 'Cross';
+    const kind = (t: ToneSetting) => (t.type === 0 ? '' : t.type === 1 ? 'Tone' : 'DTCS');
+    f.crossMode = `${kind(txT)}->${kind(rxT)}`;
+    if (txT.type === 1) f.rTone = txT.ctcss.toFixed(1);
+    if (rxT.type === 1) f.cTone = rxT.ctcss.toFixed(1);
+    if (txT.type >= 2) f.dtcsCode = txT.dcs;
+    if (rxT.type >= 2) f.rxDtcsCode = rxT.dcs;
+    f.dtcsPol = pol(txT) + pol(rxT);
   }
-
-  if (currentCell.length > 0 || currentRow.length > 0) {
-    currentRow.push(currentCell.trim());
-    rows.push(currentRow);
-  }
-
-  return rows;
+  return f;
 }
 
 export function channelsToChirpCsv(channels: RadioChannel[]): string {
   const lines: string[] = [CHIRP_COLUMNS.join(',')];
 
-  channels.forEach((ch, index) => {
-    if (ch.rxFreq <= 0) return;
-
-    let duplex = ch.duplex === 'OFF' ? '' : ch.duplex;
-    let offset = ch.offset > 0 ? ch.offset.toFixed(6) : '0.000000';
-    let toneMode = '';
-    let rTone = '88.5';
-    let cTone = '88.5';
-    let dtcsCode = '023';
-    let rxDtcsCode = '023';
-    let dtcsPol = 'NN';
-    let crossMode = 'Tone->Tone';
-
-    const txT = ch.txTone;
-    const rxT = ch.rxTone;
-
-    if (txT.type === 0 && rxT.type === 0) {
-      toneMode = '';
-    } else if (txT.type === 1 && rxT.type === 0) {
-      toneMode = 'Tone';
-      rTone = txT.ctcss.toFixed(1);
-    } else if (txT.type === 1 && rxT.type === 1 && Math.abs(txT.ctcss - rxT.ctcss) < 0.1) {
-      toneMode = 'TSQL';
-      rTone = txT.ctcss.toFixed(1);
-      cTone = rxT.ctcss.toFixed(1);
-    } else if (txT.type >= 2 && rxT.type >= 2 && txT.dcs === rxT.dcs) {
-      toneMode = 'DTCS';
-      dtcsCode = txT.dcs;
-      rxDtcsCode = rxT.dcs;
-      dtcsPol = (txT.type === 3 ? 'R' : 'N') + (rxT.type === 3 ? 'R' : 'N');
-    } else {
-      toneMode = 'Cross';
-      const kind = (t: ToneSetting) => (t.type === 0 ? '' : t.type === 1 ? 'Tone' : 'DTCS');
-      crossMode = `${kind(txT)}->${kind(rxT)}`;
-      if (txT.type === 1) rTone = txT.ctcss.toFixed(1);
-      if (rxT.type === 1) cTone = rxT.ctcss.toFixed(1);
-      if (txT.type >= 2) dtcsCode = txT.dcs;
-      if (rxT.type >= 2) rxDtcsCode = rxT.dcs;
-      dtcsPol = (txT.type === 3 ? 'R' : 'N') + (rxT.type === 3 ? 'R' : 'N');
-    }
-
+  channels.forEach((ch) => {
+    if (isChannelEmpty(ch)) return;
+    const t = chirpToneFields(ch);
+    const duplex = ch.duplex === 'OFF' ? '' : ch.duplex === 'SPLIT' ? 'split' : ch.duplex;
+    const offset = ch.duplex === 'SPLIT' ? ch.txFreq : ch.offset;
     const mode = ch.mode === 1 ? 'AM' : (ch.bandwidth === 0 ? 'NFM' : 'FM');
-    const skip = ch.scan === 1 ? '' : 'S';
-    const power = ch.power === 1 ? 'High' : 'Low';
 
     const row = [
-      index, // CHIRP 0-indexed location
-      escapeCsvCell(ch.name),
+      ch.id,
+      escapeCsvCell(ch.name, true),
       ch.rxFreq.toFixed(6),
       duplex,
-      offset,
-      toneMode,
-      rTone,
-      cTone,
-      dtcsCode,
-      dtcsPol,
-      rxDtcsCode,
-      crossMode,
+      (offset > 0 ? offset : 0).toFixed(6),
+      t.toneMode,
+      t.rTone,
+      t.cTone,
+      t.dtcsCode,
+      t.dtcsPol,
+      t.rxDtcsCode,
+      t.crossMode,
       mode,
-      '5.00', // TStep
-      skip,
-      power,
-      '', // Comment
-      '', // URCALL
-      '', // RPT1CALL
-      '', // RPT2CALL
-      ''  // DVCODE
+      '5.00',
+      ch.scan === 1 ? '' : 'S',
+      ch.power === 1 ? 'High' : 'Low',
+      '', '', '', '', ''
     ];
-
     lines.push(row.join(','));
   });
 
   return lines.join('\r\n') + '\r\n';
 }
 
+const validDcs = (code: string) => (DCS_CODES.includes(code) ? code : '023');
+
 export function parseChirpRow(row: Record<string, string>, channelId: number): RadioChannel | null {
   const rxFreq = parseFloat(row['Frequency']);
-  if (!rxFreq || isNaN(rxFreq) || rxFreq <= 0) return null;
+  if (!(rxFreq > 0)) return null;
 
   const ch = createBlankChannel(channelId);
-  ch.name = (row['Name'] || `CH-${channelId}`).substring(0, 16);
-  ch.rxFreq = Math.round(rxFreq * 1e5) / 1e5;
+  ch.name = toRadioAscii(row['Name'] || '');
+  ch.rxFreq = roundMHz(rxFreq);
 
-  const duplexStr = (row['Duplex'] || '').trim();
-  const offset = parseFloat(row['Offset']) || 0;
-  ch.offset = Math.round(offset * 1e5) / 1e5;
+  const duplexStr = (row['Duplex'] || '').trim().toLowerCase();
+  const offset = Math.abs(parseFloat(row['Offset']) || 0);
 
-  if (duplexStr === '+') {
-    ch.duplex = '+';
-    ch.txFreq = Math.round((ch.rxFreq + ch.offset) * 1e5) / 1e5;
-  } else if (duplexStr === '-') {
-    ch.duplex = '-';
-    ch.txFreq = Math.round((ch.rxFreq - ch.offset) * 1e5) / 1e5;
-  } else if (duplexStr.toLowerCase() === 'split') {
+  if (duplexStr === '+' || duplexStr === '-') {
+    ch.duplex = duplexStr;
+    ch.offset = roundMHz(offset);
+    ch.txFreq = roundMHz(duplexStr === '+' ? ch.rxFreq + offset : ch.rxFreq - offset);
+  } else if (duplexStr === 'split') {
+    ch.txFreq = offset > 0 ? roundMHz(offset) : ch.rxFreq;
     ch.duplex = 'SPLIT';
-    ch.txFreq = ch.offset > 0 ? ch.offset : ch.rxFreq;
+    ch.offset = Math.abs(roundMHz(ch.txFreq - ch.rxFreq));
+  } else if (duplexStr === 'off') {
+    // CHIRP "off" means transmit disabled; the radio has no such flag, so keep it simplex.
+    ch.txFreq = ch.rxFreq;
   } else {
-    ch.duplex = 'OFF';
     ch.txFreq = ch.rxFreq;
   }
 
-  // Tones
   const toneMode = (row['Tone'] || '').trim();
   const rToneFreq = parseFloat(row['rToneFreq']) || 88.5;
-  const cToneFreq = parseFloat(row['cToneFreq']) || 88.5;
-  const dtcsCode = (row['DtcsCode'] || '023').padStart(3, '0');
-  const rxDtcsCode = (row['RxDtcsCode'] || dtcsCode).padStart(3, '0');
-  const polarity = (row['DtcsPolarity'] || 'NN').toUpperCase();
+  const cToneFreq = parseFloat(row['cToneFreq']) || rToneFreq;
+  const dtcsCode = validDcs((row['DtcsCode'] || '023').padStart(3, '0'));
+  const rxDtcsCode = validDcs((row['RxDtcsCode'] || row['DtcsCode'] || '023').padStart(3, '0'));
+  const polarity = ((row['DtcsPolarity'] || 'NN').toUpperCase() + 'NN').slice(0, 2);
+  const dcs = (code: string, p: string): ToneSetting => ({ type: (p === 'R' ? 3 : 2) as ToneType, ctcss: 88.5, dcs: code });
+  const ctcss = (f: number): ToneSetting => ({ type: 1, ctcss: nearestCtcss(f), dcs: '023' });
 
   if (toneMode === 'Tone') {
-    ch.txTone = { type: 1, ctcss: nearestCtcss(rToneFreq), dcs: '023' };
-    ch.rxTone = createEmptyTone();
+    ch.txTone = ctcss(rToneFreq);
   } else if (toneMode === 'TSQL') {
-    const toneVal = nearestCtcss(cToneFreq || rToneFreq);
-    ch.txTone = { type: 1, ctcss: toneVal, dcs: '023' };
-    ch.rxTone = { type: 1, ctcss: toneVal, dcs: '023' };
+    ch.txTone = ctcss(cToneFreq);
+    ch.rxTone = ctcss(cToneFreq);
   } else if (toneMode === 'DTCS') {
-    const txPol: ToneType = polarity[0] === 'R' ? 3 : 2;
-    const rxPol: ToneType = polarity[1] === 'R' ? 3 : 2;
-    ch.txTone = { type: txPol, ctcss: 88.5, dcs: DCS_CODES.includes(dtcsCode) ? dtcsCode : '023' };
-    ch.rxTone = { type: rxPol, ctcss: 88.5, dcs: DCS_CODES.includes(rxDtcsCode) ? rxDtcsCode : '023' };
+    ch.txTone = dcs(dtcsCode, polarity[0]);
+    ch.rxTone = dcs(dtcsCode, polarity[1]);
   } else if (toneMode === 'Cross') {
-    const cross = (row['CrossMode'] || 'Tone->Tone').split('->');
-    const txKind = cross[0] || 'Tone';
-    const rxKind = cross[1] || '';
-
-    if (txKind === 'Tone') ch.txTone = { type: 1, ctcss: nearestCtcss(rToneFreq), dcs: '023' };
-    else if (txKind === 'DTCS') ch.txTone = { type: polarity[0] === 'R' ? 3 : 2, ctcss: 88.5, dcs: dtcsCode };
-
-    if (rxKind === 'Tone') ch.rxTone = { type: 1, ctcss: nearestCtcss(cToneFreq), dcs: '023' };
-    else if (rxKind === 'DTCS') ch.rxTone = { type: polarity[1] === 'R' ? 3 : 2, ctcss: 88.5, dcs: rxDtcsCode };
+    const [txKind = 'Tone', rxKind = ''] = (row['CrossMode'] || 'Tone->Tone').split('->');
+    if (txKind === 'Tone') ch.txTone = ctcss(rToneFreq);
+    else if (txKind === 'DTCS') ch.txTone = dcs(dtcsCode, polarity[0]);
+    if (rxKind === 'Tone') ch.rxTone = ctcss(cToneFreq);
+    else if (rxKind === 'DTCS') ch.rxTone = dcs(rxDtcsCode, polarity[1]);
   }
 
-  // Modulation & Bandwidth
-  const modeStr = (row['Mode'] || 'FM').toUpperCase();
-  if (modeStr.includes('AM')) {
+  const modeStr = (row['Mode'] || 'FM').trim().toUpperCase();
+  if (modeStr === 'AM' || modeStr === 'NAM') {
     ch.mode = 1;
   } else {
     ch.mode = 0;
     ch.bandwidth = modeStr === 'NFM' ? 0 : 1;
   }
 
-  // Scan Skip
-  ch.scan = (row['Skip'] || '').toUpperCase() === 'S' ? 0 : 1;
+  ch.scan = (row['Skip'] || '').trim().toUpperCase() === 'S' ? 0 : 1;
 
-  // Power
-  const pwrStr = (row['Power'] || '').toUpperCase();
-  ch.power = (pwrStr.includes('LOW') || pwrStr === '0' || pwrStr.startsWith('1.') || pwrStr.startsWith('5.')) ? 0 : 1;
+  const pwrStr = (row['Power'] || '').trim().toUpperCase();
+  const watts = parseFloat(pwrStr);
+  ch.power = pwrStr.includes('LOW') || (watts > 0 && watts < 10) ? 0 : 1;
 
   return ch;
 }
 
+// ---------- OEM CPS ----------
+
+export function channelsToOemCsv(channels: RadioChannel[]): string {
+  const L = OEM_LABELS;
+  const lines = [OEM_COLUMNS.join(',')];
+  channels.forEach((ch) => {
+    if (isChannelEmpty(ch)) return;
+    lines.push([
+      ch.id,
+      ch.rxFreq.toFixed(5),
+      (ch.txFreq > 0 ? ch.txFreq : ch.rxFreq).toFixed(5),
+      toneLabel(ch.rxTone),
+      toneLabel(ch.txTone),
+      oemLabel(L.power, ch.power),
+      oemLabel(L.bandwidth, ch.bandwidth),
+      oemLabel(L.scan, ch.scan),
+      oemLabel(L.busy, ch.busy),
+      oemLabel(L.specialDcs, ch.specialDcs),
+      oemLabel(L.onOff, ch.vague),
+      oemLabel(L.onOff, ch.compander),
+      oemLabel(L.scrambler, ch.scrambler),
+      oemLabel(L.mode, ch.mode),
+      oemLabel(L.rxSig, ch.rxSig),
+      oemLabel(L.code, ch.pushCode),
+      oemLabel(L.code, ch.popCode),
+      escapeCsvCell(ch.name, true)
+    ].join(','));
+  });
+  // The OEM software expects a UTF-8 BOM and CRLF line endings.
+  return '﻿' + lines.join('\r\n') + '\r\n';
+}
+
 export function parseOemRow(row: Record<string, string>, channelId: number): RadioChannel | null {
   const rxFreq = parseFloat(row['RX Freq.']);
-  if (!rxFreq || isNaN(rxFreq) || rxFreq <= 0) return null;
+  if (!(rxFreq > 0)) return null;
+  const L = OEM_LABELS;
 
   const ch = createBlankChannel(channelId);
-  ch.name = (row['Name'] || `CH-${channelId}`).substring(0, 16);
-  ch.rxFreq = Math.round(rxFreq * 1e5) / 1e5;
-
-  const txFreq = parseFloat(row['TX Freq.']) || ch.rxFreq;
-  ch.txFreq = Math.round(txFreq * 1e5) / 1e5;
-
-  const delta = Math.round((ch.txFreq - ch.rxFreq) * 1e5) / 1e5;
-  if (delta > 0) {
-    ch.duplex = '+';
-    ch.offset = delta;
-  } else if (delta < 0) {
-    ch.duplex = '-';
-    ch.offset = Math.abs(delta);
-  } else {
-    ch.duplex = 'OFF';
-    ch.offset = 0;
-  }
+  ch.name = toRadioAscii(row['Name'] || '');
+  ch.rxFreq = roundMHz(rxFreq);
+  const txFreq = parseFloat(row['TX Freq.']);
+  ch.txFreq = txFreq > 0 ? roundMHz(txFreq) : ch.rxFreq;
+  Object.assign(ch, deriveDuplex(ch.rxFreq, ch.txFreq));
 
   ch.rxTone = parseToneString(row['QT/DQT Dec'] || 'Off');
   ch.txTone = parseToneString(row['QT/DQT Enc'] || 'Off');
-
-  const pwr = (row['TX Power'] || '').toLowerCase();
-  ch.power = pwr.includes('low') ? 0 : 1;
-
-  const bw = (row['Bandwidth'] || '').toLowerCase();
-  ch.bandwidth = bw.includes('narrow') ? 0 : 1;
-
-  const scan = (row['Scan'] || '').toLowerCase();
-  ch.scan = scan.includes('del') ? 0 : 1;
-
-  const mode = (row['FM/AM'] || '').toLowerCase();
-  ch.mode = mode.includes('am') ? 1 : 0;
-
+  ch.power = oemValue(L.power, row['TX Power'], 1) as 0 | 1;
+  ch.bandwidth = oemValue(L.bandwidth, row['Bandwidth'], 1) as 0 | 1;
+  ch.scan = oemValue(L.scan, row['Scan'], 1) as 0 | 1;
+  ch.busy = oemValue(L.busy, row['Busy Inhibit'], 0) as 0 | 1 | 2;
+  ch.specialDcs = oemValue(L.specialDcs, row['Special DCS'], 0) as 0 | 1 | 2 | 3 | 4;
+  ch.vague = oemValue(L.onOff, row['Vague Subaudio'], 0) as 0 | 1;
+  ch.compander = oemValue(L.onOff, row['Compando'], 0) as 0 | 1;
+  ch.scrambler = oemValue(L.scrambler, row['scramble'], 0);
+  ch.mode = oemValue(L.mode, row['FM/AM'], 0) as 0 | 1;
+  ch.rxSig = oemValue(L.rxSig, row['Rx signal Code'], 0) as 0 | 1 | 2 | 3;
+  ch.pushCode = oemValue(L.code, row['PTT Push Code'], 0);
+  ch.popCode = oemValue(L.code, row['PTT Pop Code'], 0);
   return ch;
+}
+
+// ---------- Import ----------
+
+export type CsvFormat = 'chirp' | 'oem' | 'unknown';
+
+export interface ParsedCsvChannel {
+  location?: number; // 1-based channel number from the file, if it has one
+  channel: RadioChannel;
+}
+
+export function detectCsvFormat(header: string[]): CsvFormat {
+  const has = (name: string) => header.some((h) => h.toLowerCase() === name.toLowerCase());
+  if (has('RX Freq.') && has('QT/DQT Dec')) return 'oem';
+  if (has('Frequency') && (has('Duplex') || has('Tone') || has('Location'))) return 'chirp';
+  return 'unknown';
+}
+
+export function parseCsvChannels(text: string, delimiter = ','): { format: CsvFormat; channels: ParsedCsvChannel[] } {
+  const { header, records } = rowsToObjects(parseCsvRows(text, delimiter));
+  const format = detectCsvFormat(header);
+  if (format === 'unknown') return { format, channels: [] };
+
+  const out: ParsedCsvChannel[] = [];
+  records.forEach((rec, i) => {
+    const ch = format === 'oem' ? parseOemRow(rec, i + 1) : parseChirpRow(rec, i + 1);
+    if (!ch) return;
+    const locStr = format === 'oem' ? rec['NO.'] : rec['Location'];
+    const loc = /^\d+$/.test((locStr || '').trim()) ? parseInt(locStr, 10) : undefined;
+    out.push({ location: loc, channel: ch });
+  });
+
+  // Files from radios whose memories start at 0 are shifted so 0 lands on channel 1.
+  if (out.some((p) => p.location === 0)) {
+    out.forEach((p) => { if (p.location !== undefined) p.location += 1; });
+  }
+  return { format, channels: out };
+}
+
+export interface CsvImportOptions {
+  mode: PlacementMode;
+  startAt?: number;
+}
+
+export interface CsvImportResult {
+  channels: RadioChannel[];
+  importedCount: number;
+  format: CsvFormat;
+  plan: PlacementPlan;
 }
 
 export function importCsvToChannels(
   csvText: string,
   existingChannels: RadioChannel[],
-  startChannelIndex = 1
-): { channels: RadioChannel[]; importedCount: number } {
-  const rows = parseCsvRows(csvText);
-  if (rows.length < 2) return { channels: [...existingChannels], importedCount: 0 };
-
-  const header = rows[0].map(h => h.trim());
-  const isChirp = header.some(h => /frequency/i.test(h));
-  const isOem = header.some(h => /rx freq/i.test(h));
-
-  const resultChannels = [...existingChannels];
-  let targetIdx = startChannelIndex;
-  let importedCount = 0;
-
-  for (let r = 1; r < rows.length && targetIdx <= 500; r++) {
-    const rowValues = rows[r];
-    if (rowValues.length < 2) continue;
-
-    const rowObj: Record<string, string> = {};
-    header.forEach((col, idx) => {
-      rowObj[col] = rowValues[idx] || '';
-    });
-
-    let parsedCh: RadioChannel | null = null;
-    if (isChirp) {
-      parsedCh = parseChirpRow(rowObj, targetIdx);
-    } else if (isOem) {
-      parsedCh = parseOemRow(rowObj, targetIdx);
-    } else {
-      // Generic fallback (e.g. standard RepeaterBook CSV)
-      const freqCol = header.find(h => /frequency|downlink|rx/i.test(h));
-      if (freqCol && rowObj[freqCol]) {
-        rowObj['Frequency'] = rowObj[freqCol];
-        rowObj['Name'] = rowObj['Callsign'] || rowObj['Name'] || rowObj['Location'] || '';
-        parsedCh = parseChirpRow(rowObj, targetIdx);
-      }
-    }
-
-    if (parsedCh) {
-      resultChannels[targetIdx - 1] = parsedCh;
-      targetIdx++;
-      importedCount++;
-    }
+  options: CsvImportOptions = { mode: 'location' }
+): CsvImportResult {
+  const { format, channels: parsed } = parseCsvChannels(csvText);
+  if (format === 'unknown') {
+    throw new Error('Unrecognised CSV. Expected a CHIRP export (Location, Name, Frequency, …) or an OEM CPS export (NO., RX Freq., …). For RepeaterBook CSV files use the RepeaterBook import.');
   }
-
-  return { channels: resultChannels, importedCount };
+  const mode = options.mode === 'location' && parsed.every((p) => p.location === undefined) ? 'appendEmpty' : options.mode;
+  const plan = planPlacement(existingChannels, parsed.length, mode, options.startAt ?? 1, parsed.map((p) => p.location));
+  const channels = applyPlacement(existingChannels, parsed.map((p) => p.channel), plan);
+  return { channels, importedCount: plan.targets.filter((t) => t !== -1).length, format, plan };
 }

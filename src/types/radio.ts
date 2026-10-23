@@ -7,13 +7,15 @@ export interface ToneSetting {
   noneRaw?: number;    // preserved raw value when tone is off (usually 0xFFFF)
 }
 
+export type Duplex = '+' | '-' | 'OFF' | 'SPLIT';
+
 export interface RadioChannel {
   id: number;          // 1 to 500
-  name: string;        // Up to 16 ASCII characters
+  name: string;        // Up to 16 printable ASCII characters
   rxFreq: number;      // MHz (e.g. 146.52000)
   txFreq: number;      // MHz (e.g. 146.52000)
-  duplex: '+' | '-' | 'OFF' | 'SPLIT';
-  offset: number;      // MHz (e.g. 0.60000 or 5.00000)
+  duplex: Duplex;
+  offset: number;      // MHz (e.g. 0.60000 or 5.00000); for SPLIT this mirrors |tx - rx|
   rxTone: ToneSetting;
   txTone: ToneSetting;
   power: 0 | 1;        // 0=Low, 1=High
@@ -28,7 +30,8 @@ export interface RadioChannel {
   rxSig: 0 | 1 | 2 | 3;// 0=OFF, 1=DTMF, 2=FSK, 3=FSK DTMF
   pushCode: number;    // 0=OFF, 1=ID, 2..31=Code 1..30
   popCode: number;     // 0=OFF, 1=ID, 2..31=Code 1..30
-  rawBytes?: number[]; // Raw 85-byte vendor record
+  rawBytes?: number[];    // Original 85-byte .ysf record (unknown bits are preserved on save)
+  eepromBytes?: number[]; // Original 34-byte radio record (unknown bits are preserved on write)
 }
 
 export type HandsetKeyFunction =
@@ -51,35 +54,33 @@ export interface HandsetKeySettings {
   key3Long: HandsetKeyFunction;
 }
 
-export interface RadioSettings {
-  powerOnDisplay: 0 | 1;     // 0 = Message, 1 = Voltage
-  powerOnMsg: string;        // Up to 7 characters
-  squelch: number;           // 0 to 9
-  tot: number;               // Timeout Timer (0=OFF, 30..300 seconds)
-  vox: number;               // 0=OFF, 1..9
-  voicePrompt: 0 | 1 | 2;    // 0=OFF, 1=Chinese, 2=English
-  rogerBeep: 0 | 1 | 2;      // 0=OFF, 1=ROGER1, 2=ROGER2
-  keyBeep: 0 | 1;            // 0=OFF, 1=ON
-  backlightTimeout: number;  // 0=Always ON, 5, 10, 15, 20s
-  frequencyStep: number;     // Index for 2.5K, 5K, 6.25K, 10K, 12.5K, 25K
-  tailEliminate: 0 | 1;      // 0=OFF, 1=ON
-  dualWatch: 0 | 1;          // 0=OFF, 1=ON
-  keys: HandsetKeySettings;  // Microphone & programmable handset keys
+/** Data stored outside the 500 channel records of a .ysf codeplug. */
+export interface CodeplugExtras {
+  keys: HandsetKeySettings;
+  powerOnMessage: string;
+  vfos: RadioChannel[];          // 2 channel-format records in the file header
+  tailMemories: RadioChannel[];  // 7 channel-format records at the end of the settings block
 }
 
 export interface RepeaterBookResult {
   callsign: string;
-  frequency: number;   // MHz
-  offset: number;      // MHz
-  duplex: string;      // '+', '-', 'OFF', 'Split'
-  toneType: string;    // 'Tone', 'TSQL', 'DTCS', 'None'
-  toneVal: string;     // e.g. "88.5" or "023"
-  tonePolarity?: string; // 'NN', 'RI', etc.
+  frequency: number;   // Output (radio RX), MHz
+  inputFrequency?: number; // Repeater input (radio TX), MHz
+  offset: number;      // MHz, always positive
+  duplex: '+' | '-' | 'OFF' | 'SPLIT';
+  duplexGuessed?: boolean; // the source gave no direction; it was taken from the US band plan
+  txTone: ToneSetting; // Uplink tone (radio TX)
+  rxTone: ToneSetting; // Downlink tone (radio RX / TSQL)
+  narrow?: boolean;
   location: string;
   county: string;
   state: string;
-  use: string;         // 'OPEN', 'CLOSED', etc.
+  country?: string;
+  use: string;         // 'OPEN', 'CLOSED', 'PRIVATE', ...
+  status?: string;     // 'On-air', 'Off-air', 'Testing', 'Unknown'
+  analog?: boolean;    // FM analog capable
   lat?: number;
   lon?: number;
   distanceMiles?: number;
+  detailUrl?: string;
 }

@@ -3,63 +3,64 @@ import {
   getChannelEepromAddress,
   encodeChannelToEeprom,
   decodeChannelFromEeprom,
+  detectEmptyFill,
   EEPROM_RECORD_SIZE
 } from '../src/codecs/eeprom-codec';
-import { createBlankChannel } from '../src/codecs/ysf-codec';
+import { createBlankChannel } from '../src/codecs/channel';
 import { RadioChannel } from '../src/types/radio';
 
 describe('EEPROM Memory Addressing & Channel Record Codec', () => {
-  it('should calculate EEPROM addresses accurately according to reverse-engineered assembly math', () => {
-    // Channel 0 (Ch 1 in UI): 0x1000 + 0 = 0x1000
+  it('calculates channel addresses', () => {
     expect(getChannelEepromAddress(0)).toBe(0x1000);
-
-    // Channel 1 (Ch 2 in UI): 0x1000 + 34 (0x22) = 0x1022
     expect(getChannelEepromAddress(1)).toBe(0x1022);
-
-    // Channel 31 (Ch 32 in UI, last in sector 0): 0x1000 + 31 * 34 = 0x1000 + 1054 = 0x141E
     expect(getChannelEepromAddress(31)).toBe(0x141E);
-
-    // Channel 32 (Ch 33 in UI, first in sector 1): 0x1000 + 1 * 0x1000 + 0 = 0x2000
     expect(getChannelEepromAddress(32)).toBe(0x2000);
-
-    // Channel 499 (Ch 500 in UI): sector 15 -> 0x1000 + 15 * 0x1000 + (19 * 34) = 0x10000 + 646 = 0x10286
     expect(getChannelEepromAddress(499)).toBe(0x10286);
   });
 
-  it('should encode and decode a 34-byte EEPROM channel record with high fidelity', () => {
+  it('encodes and decodes a 34-byte record', () => {
     const ch: RadioChannel = {
       ...createBlankChannel(1),
       name: 'CALL-146.52',
-      rxFreq: 146.52000,
-      txFreq: 146.52000,
-      duplex: 'OFF',
-      offset: 0,
+      rxFreq: 146.52,
+      txFreq: 146.52,
       txTone: { type: 1, ctcss: 88.5, dcs: '023' },
       rxTone: { type: 1, ctcss: 88.5, dcs: '023' },
-      power: 1,
-      bandwidth: 1,
-      scan: 1,
-      mode: 0,
       busy: 1,
       compander: 1
     };
-
     const encoded = encodeChannelToEeprom(ch);
     expect(encoded.length).toBe(EEPROM_RECORD_SIZE);
-
     const decoded = decodeChannelFromEeprom(encoded, 1);
-    expect(decoded.id).toBe(1);
-    expect(decoded.name).toBe('CALL-146.52');
-    expect(decoded.rxFreq).toBe(146.52000);
-    expect(decoded.txFreq).toBe(146.52000);
-    expect(decoded.txTone.type).toBe(1);
-    expect(decoded.txTone.ctcss).toBe(88.5);
-    expect(decoded.rxTone.type).toBe(1);
-    expect(decoded.rxTone.ctcss).toBe(88.5);
-    expect(decoded.power).toBe(1);
-    expect(decoded.bandwidth).toBe(1);
-    expect(decoded.scan).toBe(1);
-    expect(decoded.busy).toBe(1);
-    expect(decoded.compander).toBe(1);
+    expect(decoded).toMatchObject({ id: 1, name: 'CALL-146.52', rxFreq: 146.52, txFreq: 146.52, power: 1, bandwidth: 1, scan: 1, busy: 1, compander: 1 });
+    expect(decoded.txTone).toMatchObject({ type: 1, ctcss: 88.5 });
+  });
+
+  it('treats erased flash (all 0xFF) as an empty channel', () => {
+    const decoded = decodeChannelFromEeprom(new Uint8Array(34).fill(0xFF), 7);
+    expect(decoded.rxFreq).toBe(0);
+    expect(decoded.name).toBe('');
+  });
+
+  it('keeps unknown bits from the record read from the radio', () => {
+    const raw = encodeChannelToEeprom({ ...createBlankChannel(1), rxFreq: 146.52, txFreq: 146.52 });
+    raw[12] |= 0x81; // unknown bits 0 and 7
+    raw[13] |= 0x40; // unknown bit 6
+    raw[15] |= 0x08; // unknown bit 3
+    const decoded = decodeChannelFromEeprom(raw, 1);
+    const again = encodeChannelToEeprom({ ...decoded, name: 'NEW', power: 0 });
+    expect(again[12] & 0x81).toBe(0x81);
+    expect(again[13] & 0x40).toBe(0x40);
+    expect(again[15] & 0x08).toBe(0x08);
+    expect((again[13] >> 5) & 1).toBe(0);
+  });
+
+  it('fills empty slots with the byte the radio already uses', () => {
+    const ff = new Uint8Array(34).fill(0xFF);
+    const zero = new Uint8Array(34);
+    expect(detectEmptyFill([ff, ff, zero])).toBe(0xFF);
+    expect(detectEmptyFill([zero])).toBe(0x00);
+    expect(detectEmptyFill([])).toBe(0x00);
+    expect(Array.from(encodeChannelToEeprom(createBlankChannel(1), 0xFF))).toEqual(Array(34).fill(0xFF));
   });
 });

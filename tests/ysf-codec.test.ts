@@ -7,118 +7,96 @@ import {
   TOTAL_FILE_SIZE,
   MAX_CH,
   HEADER_SIZE,
-  REC_SIZE
+  REC_SIZE,
+  F_SCAN_PWR_BW,
+  POWER_ON_MSG_OFFSET
 } from '../src/codecs/ysf-codec';
+import { createBlankChannel } from '../src/codecs/channel';
+import { ctcssTone } from '../src/codecs/tone-tables';
 
 describe('YSF Codeplug Binary Codec', () => {
-  it('should decode the clean factory template with 0 active channels', () => {
+  it('decodes the factory template with 0 active channels', () => {
     const raw = getDefaultTemplateBytes();
     expect(raw.length).toBe(TOTAL_FILE_SIZE);
 
-    const { channels, rawHeader, rawTail } = decodeYsf(raw);
+    const { channels, image } = decodeYsf(raw);
     expect(channels.length).toBe(MAX_CH);
-    expect(rawHeader.length).toBe(HEADER_SIZE);
-    expect(rawTail.length).toBe(3982);
-
-    const active = channels.filter(c => c.rxFreq > 0);
-    expect(active.length).toBe(0);
-
-    // Verify channel 1 is blank
-    const ch1 = channels[0];
-    expect(ch1.id).toBe(1);
-    expect(ch1.rxFreq).toBe(0);
-    expect(ch1.txFreq).toBe(0);
-    expect(ch1.duplex).toBe('OFF');
-    expect(ch1.name.trim()).toBe('');
+    expect(image.length).toBe(TOTAL_FILE_SIZE);
+    expect(channels.filter((c) => c.rxFreq > 0).length).toBe(0);
+    expect(channels[0]).toMatchObject({ id: 1, rxFreq: 0, txFreq: 0, duplex: 'OFF', name: '' });
   });
 
-  it('should create a clean blank codeplug via createNewCodeplug()', () => {
-    const { channels, rawHeader, rawTail } = createNewCodeplug();
-    expect(channels.length).toBe(MAX_CH);
-    expect(rawHeader.length).toBe(HEADER_SIZE);
-    expect(rawTail.length).toBe(3982);
-
-    // Ensure all 500 channels are blank
-    const active = channels.filter(c => c.rxFreq > 0);
-    expect(active.length).toBe(0);
-
-    // Ensure channel allocation bitmask is all zeroes
-    for (let b = 351; b <= 413; b++) {
-      expect(rawHeader[b]).toBe(0);
-    }
+  it('decodes the records inferred from the template structure', () => {
+    const { extras } = createNewCodeplug();
+    expect(extras.vfos.map((v) => v.rxFreq)).toEqual([430, 144.3]);
+    expect(extras.vfos[1].power).toBe(1);
+    expect(extras.tailMemories).toHaveLength(7);
+    expect(extras.tailMemories[0].rxFreq).toBe(0);
+    expect(extras.tailMemories[1]).toMatchObject({ rxFreq: 435.025, txFreq: 455.025, scan: 1, bandwidth: 1, power: 1 });
+    expect(extras.powerOnMessage).toBe('HELLO');
   });
 
-  it('should round-trip encode and decode programmed channels without data loss', () => {
+  it('creates a blank codeplug with an empty channel bitmask', () => {
+    const { channels, image } = createNewCodeplug();
+    expect(channels.filter((c) => c.rxFreq > 0).length).toBe(0);
+    for (let b = 351; b <= 413; b++) expect(image[b]).toBe(0);
+  });
+
+  it('round-trips programmed channels', () => {
     const codeplug = createNewCodeplug();
-
-    // Program two test channels
-    codeplug.channels[0] = {
-      ...codeplug.channels[0],
-      name: 'CALL-146.52',
-      rxFreq: 146.52000,
-      txFreq: 146.52000,
-      duplex: 'OFF',
-      offset: 0,
-      power: 1,
-      bandwidth: 1,
-      scan: 1,
-      mode: 0
-    };
-
+    codeplug.channels[0] = { ...codeplug.channels[0], name: 'CALL-146.52', rxFreq: 146.52, txFreq: 146.52 };
     codeplug.channels[1] = {
-      ...codeplug.channels[1],
-      name: 'RPT-146.88',
-      rxFreq: 146.88000,
-      txFreq: 146.28000,
-      duplex: '-',
-      offset: 0.60000,
-      power: 1,
-      bandwidth: 1,
-      scan: 1,
-      mode: 0,
-      txTone: { type: 1, ctcss: 100.0, dcs: '023' }
+      ...codeplug.channels[1], name: 'RPT-146.88', rxFreq: 146.88, txFreq: 146.28, duplex: '-', offset: 0.6,
+      txTone: ctcssTone(100)
     };
-
-    const reEncoded = encodeYsf(codeplug.channels, codeplug.rawHeader, codeplug.rawTail);
-    expect(reEncoded.length).toBe(TOTAL_FILE_SIZE);
-
-    const reDecoded = decodeYsf(reEncoded);
-    expect(reDecoded.channels.length).toBe(MAX_CH);
-
-    const ch1 = reDecoded.channels[0];
-    expect(ch1.name).toBe('CALL-146.52');
-    expect(ch1.rxFreq).toBe(146.52000);
-    expect(ch1.txFreq).toBe(146.52000);
-    expect(ch1.duplex).toBe('OFF');
-
-    const ch2 = reDecoded.channels[1];
-    expect(ch2.name).toBe('RPT-146.88');
-    expect(ch2.rxFreq).toBe(146.88000);
-    expect(ch2.txFreq).toBe(146.28000);
-    expect(ch2.duplex).toBe('-');
-    expect(ch2.offset).toBe(0.60000);
-    expect(ch2.txTone.type).toBe(1);
-    expect(ch2.txTone.ctcss).toBe(100.0);
-
-    // Channel 3 onwards should be empty
+    const reDecoded = decodeYsf(encodeYsf(codeplug.channels, codeplug.image));
+    expect(reDecoded.channels[0]).toMatchObject({ name: 'CALL-146.52', rxFreq: 146.52, txFreq: 146.52, duplex: 'OFF' });
+    expect(reDecoded.channels[1]).toMatchObject({ name: 'RPT-146.88', rxFreq: 146.88, duplex: '-', offset: 0.6 });
+    expect(reDecoded.channels[1].txFreq).toBeCloseTo(146.28, 6);
+    expect(reDecoded.channels[1].txTone).toMatchObject({ type: 1, ctcss: 100 });
     expect(reDecoded.channels[2].rxFreq).toBe(0);
   });
 
-  it('should correctly calculate active channels bitmask in header bytes 351..413', () => {
+  it('sets the active channel bitmask in header bytes 351..413', () => {
     const codeplug = createNewCodeplug();
-    codeplug.channels[0].rxFreq = 146.52000; // Channel 1 active
-    codeplug.channels[1].rxFreq = 146.88000; // Channel 2 active
+    codeplug.channels[0].rxFreq = 146.52;
+    codeplug.channels[1].rxFreq = 146.88;
+    const bytes = encodeYsf(codeplug.channels, codeplug.image);
+    expect(bytes[351] & (1 << 1)).not.toBe(0);
+    expect(bytes[351] & (1 << 2)).not.toBe(0);
+    expect(bytes[351] & (1 << 3)).toBe(0);
+  });
 
-    const reEncoded = encodeYsf(codeplug.channels, codeplug.rawHeader, codeplug.rawTail);
+  it('preserves unknown bits and bytes of an existing record', () => {
+    const { channels, image } = createNewCodeplug();
+    channels[0] = { ...createBlankChannel(1), name: 'X', rxFreq: 146.52, txFreq: 146.52 };
+    const first = encodeYsf(channels, image);
+    const off = HEADER_SIZE;
+    first[off + F_SCAN_PWR_BW] |= 0x40; // unknown bit
+    first[off + 80] = 0x5A;             // unmapped byte
+    const decoded = decodeYsf(first);
+    decoded.channels[0] = { ...decoded.channels[0], name: 'RENAMED' };
+    const second = encodeYsf(decoded.channels, decoded.image);
+    expect(second[off + F_SCAN_PWR_BW] & 0x40).toBe(0x40);
+    expect(second[off + 80]).toBe(0x5A);
+    expect(second.subarray(off, off + REC_SIZE)[63]).toBe('R'.charCodeAt(0));
+  });
 
-    // Channel 1 is active: bit 1 of byte 351 (Math.floor(1/8)=0, 1<<1=2)
-    const byte351 = reEncoded[351];
-    expect((byte351 & (1 << 1)) !== 0).toBe(true);
+  it('writes extras (power-on message, VFOs) into the image', () => {
+    const cp = createNewCodeplug();
+    const vfos = [{ ...cp.extras.vfos[0], rxFreq: 446, txFreq: 446 }, cp.extras.vfos[1]];
+    const bytes = encodeYsf(cp.channels, cp.image, { powerOnMessage: 'W1ABC', vfos });
+    expect(String.fromCharCode(...bytes.subarray(POWER_ON_MSG_OFFSET, POWER_ON_MSG_OFFSET + 5))).toBe('W1ABC');
+    expect(decodeYsf(bytes).extras.vfos[0].rxFreq).toBe(446);
+  });
 
-    // Channel 2 is active: bit 2 of byte 351 (1<<2=4)
-    expect((byte351 & (1 << 2)) !== 0).toBe(true);
+  it('stores names as printable ASCII', () => {
+    const cp = createNewCodeplug();
+    cp.channels[0] = { ...createBlankChannel(1), name: 'Café Ω', rxFreq: 146.52, txFreq: 146.52 };
+    expect(decodeYsf(encodeYsf(cp.channels, cp.image)).channels[0].name).toBe('Cafe ?');
+  });
 
-    // Channel 3 is not active: bit 3 of byte 351 (1<<3=8)
-    expect((byte351 & (1 << 3)) === 0).toBe(true);
+  it('rejects files that are too large', () => {
+    expect(() => decodeYsf(new Uint8Array(TOTAL_FILE_SIZE + 1))).toThrow(/larger/);
   });
 });

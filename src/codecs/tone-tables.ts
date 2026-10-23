@@ -27,11 +27,30 @@ export function createEmptyTone(): ToneSetting {
   };
 }
 
+export function ctcssTone(freq: number): ToneSetting {
+  return { type: 1, ctcss: nearestCtcss(freq), dcs: '023' };
+}
+
+export function dcsTone(code: string, inverted = false): ToneSetting {
+  return { type: inverted ? 3 : 2, ctcss: 88.5, dcs: code };
+}
+
 export function nearestCtcss(freq: number): number {
   if (!freq || freq <= 0) return 88.5;
   return CTCSS_TONES.reduce((prev, curr) =>
     Math.abs(curr - freq) < Math.abs(prev - freq) ? curr : prev
   );
+}
+
+export function isStandardCtcss(freq: number): boolean {
+  return CTCSS_TONES.some((t) => Math.abs(t - freq) < 0.05);
+}
+
+export function sameTone(a: ToneSetting, b: ToneSetting): boolean {
+  if (a.type !== b.type) return false;
+  if (a.type === 0) return true;
+  if (a.type === 1) return Math.abs(a.ctcss - b.ctcss) < 0.05;
+  return a.dcs === b.dcs;
 }
 
 export function formatTone(tone: ToneSetting): string {
@@ -42,36 +61,73 @@ export function formatTone(tone: ToneSetting): string {
   return 'None';
 }
 
+/** Short label used by the OEM CPS CSV format: "Off", "88.5", "D023N", "D023I". */
+export function toneLabel(tone: ToneSetting): string {
+  if (!tone || tone.type === 0) return 'Off';
+  if (tone.type === 1) return tone.ctcss.toFixed(1);
+  return `D${tone.dcs}${tone.type === 3 ? 'I' : 'N'}`;
+}
+
+/**
+ * Parses "88.5", "88.5 Hz", "D023N", "023I", "Off", "None".
+ * A string that looks like a DCS code but isn't a valid one yields "no tone"
+ * rather than being misread as a CTCSS frequency.
+ */
 export function parseToneString(str: string): ToneSetting {
   const result = createEmptyTone();
   if (!str) return result;
   const clean = str.trim().toUpperCase();
-  if (!clean || clean === 'OFF' || clean === 'NONE' || clean === 'NO TONE') {
+  if (!clean || clean === 'OFF' || clean === 'NONE' || clean === 'NO TONE' || clean === 'CSQ') {
     return result;
   }
 
-  // Check for DCS e.g. D023N, D023I, 023N, 023I, DTCS
-  const dcsMatch = clean.match(/^D?(\d{3})([NI])?$/);
+  const dcsMatch = clean.match(/^D?(\d{3})\s*([NIR])?$/);
+  const looksDcs = dcsMatch && (clean.startsWith('D') || !!dcsMatch[2]);
   if (dcsMatch) {
     const code = dcsMatch[1];
-    const pol = dcsMatch[2] === 'I' ? 3 : 2;
     if (DCS_CODES.includes(code)) {
-      result.type = pol as ToneType;
+      result.type = (dcsMatch[2] === 'I' || dcsMatch[2] === 'R' ? 3 : 2) as ToneType;
       result.dcs = code;
       return result;
     }
+    if (looksDcs) return result;
   }
 
-  // Check for CTCSS frequency e.g. 88.5 or 88.5 Hz
-  const freq = parseFloat(clean.replace(/[^\d.]/g, ''));
-  if (freq > 50 && freq < 300) {
-    result.type = 1;
-    result.ctcss = nearestCtcss(freq);
-    return result;
+  const ctcssMatch = clean.match(/^(\d{2,3}(?:\.\d+)?)\s*(HZ)?$/);
+  if (ctcssMatch) {
+    const freq = parseFloat(ctcssMatch[1]);
+    if (freq >= 60 && freq <= 260) {
+      result.type = 1;
+      result.ctcss = nearestCtcss(freq);
+    }
   }
-
   return result;
 }
+
+/** Stable string key for <select> values: "N", "C88.5", "D023N", "D023I". */
+export function toneKey(tone: ToneSetting): string {
+  if (!tone || tone.type === 0) return 'N';
+  if (tone.type === 1) return `C${tone.ctcss.toFixed(1)}`;
+  return `D${tone.dcs}${tone.type === 3 ? 'I' : 'N'}`;
+}
+
+export function toneFromKey(key: string, previous?: ToneSetting): ToneSetting {
+  if (key === 'N') return { ...createEmptyTone(), noneRaw: previous?.noneRaw ?? 0xFFFF };
+  if (key.startsWith('C')) return { type: 1, ctcss: parseFloat(key.slice(1)), dcs: '023' };
+  return { type: key.endsWith('I') ? 3 : 2, ctcss: 88.5, dcs: key.slice(1, 4) };
+}
+
+export interface ToneOptionGroup {
+  label: string;
+  options: { key: string; label: string }[];
+}
+
+export const TONE_OPTION_GROUPS: ToneOptionGroup[] = [
+  { label: 'Off', options: [{ key: 'N', label: 'None' }] },
+  { label: 'CTCSS', options: CTCSS_TONES.map((t) => ({ key: `C${t.toFixed(1)}`, label: `${t.toFixed(1)} Hz` })) },
+  { label: 'DCS normal', options: DCS_CODES.map((c) => ({ key: `D${c}N`, label: `D${c}N` })) },
+  { label: 'DCS inverted', options: DCS_CODES.map((c) => ({ key: `D${c}I`, label: `D${c}I` })) }
+];
 
 export function encodeToneValue(tone: ToneSetting): { rawVal: number; toneType: number } {
   let rawVal = tone.noneRaw ?? 0xFFFF;

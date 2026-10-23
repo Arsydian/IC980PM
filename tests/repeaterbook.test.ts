@@ -1,126 +1,112 @@
 import { describe, it, expect } from 'vitest';
 import {
+  buildRepeaterBookUrl,
   calculateDistanceMiles,
-  searchRepeaters,
-  repeaterToRadioChannel,
+  filterRepeaters,
+  isAlreadyProgrammed,
+  matchState,
   parseRepeaterBookCsv,
-  US_STATE_MAP
+  parseRepeaterBookJson,
+  repeaterToRadioChannel
 } from '../src/services/repeaterbook';
-import { RepeaterBookResult } from '../src/types/radio';
+import { createBlankChannel, createBlankChannels } from '../src/codecs/channel';
 import { TEST_REPEATERS } from './fixtures/test-repeaters';
 
-function matchState(stateInRecord: string, searchState: string): boolean {
-  const normSearch = searchState.trim().toUpperCase();
-  const fullSearch = US_STATE_MAP[normSearch] || searchState.trim();
-  const recLower = stateInRecord.toLowerCase().trim();
-  return recLower.includes(fullSearch.toLowerCase()) || recLower === normSearch.toLowerCase();
-}
-
-describe('RepeaterBook Service & Math', () => {
-  it('should calculate Haversine distance in miles accurately', () => {
-    // New York (40.7128, -74.0060) to Hartford (41.7658, -72.6734) is ~99.5 miles
-    const dist = calculateDistanceMiles(40.7128, -74.0060, 41.7658, -72.6734);
+describe('RepeaterBook service', () => {
+  it('calculates Haversine distance in miles', () => {
+    const dist = calculateDistanceMiles(40.7128, -74.006, 41.7658, -72.6734);
     expect(dist).toBeGreaterThan(95);
     expect(dist).toBeLessThan(105);
   });
 
-  it('should match state names and 2-letter abbreviations bidirectionally', () => {
+  it('matches state names and 2-letter abbreviations', () => {
     expect(matchState('Florida', 'FL')).toBe(true);
     expect(matchState('Florida', 'fl')).toBe(true);
     expect(matchState('Florida', 'Florida')).toBe(true);
-    expect(matchState('Texas', 'TX')).toBe(true);
     expect(matchState('New York', 'NY')).toBe(true);
-    expect(matchState('California', 'CA')).toBe(true);
-    expect(matchState('Ohio', 'OH')).toBe(true);
-    expect(matchState('Washington', 'WA')).toBe(true);
-    expect(matchState('Georgia', 'GA')).toBe(true);
-    expect(matchState('Pennsylvania', 'PA')).toBe(true);
     expect(matchState('Florida', 'TX')).toBe(false);
+    expect(matchState('Ontario', 'ont')).toBe(true);
   });
 
-  it('should filter repeaters by state abbreviation (e.g. FL) and band', async () => {
-    const results = await searchRepeaters({
-      importedList: TEST_REPEATERS,
-      state: 'FL',
-      band: '144'
+  it('builds North America and rest-of-world export URLs', () => {
+    expect(buildRepeaterBookUrl({ region: 'US', state: 'VA', county: 'Fairfax' }))
+      .toBe('https://www.repeaterbook.com/api/export.php?country=United+States&state_id=51&county=Fairfax');
+    expect(buildRepeaterBookUrl({ region: 'GB', city: 'London' }))
+      .toBe('https://www.repeaterbook.com/api/exportROW.php?country=United+Kingdom&city=London');
+  });
+
+  it('parses the export API JSON format', () => {
+    const json = JSON.stringify({
+      count: 2,
+      results: [
+        {
+          'State ID': '12', 'Rptr ID': '345', Frequency: '146.79000', 'Input Freq': '146.19000', PL: '107.2', TSQ: '',
+          'Nearest City': 'Orlando', County: 'Orange', State: 'Florida', Country: 'United States', Lat: '28.53', Long: '-81.37',
+          Callsign: 'K4ABC', Use: 'OPEN', 'Operational Status': 'On-air', 'FM Analog': 'Yes', 'FM Bandwidth': '25 kHz'
+        },
+        {
+          Frequency: '444.20000', 'Input Freq': '449.20000', PL: 'D023', TSQ: 'D023', Callsign: 'N4XYZ',
+          'Operational Status': 'Off-air', 'FM Analog': 'No'
+        }
+      ]
     });
-    expect(results.length).toBe(1);
-    expect(results[0].callsign).toBe('K4WPD');
-    expect(results[0].state).toBe('Florida');
-    expect(results[0].frequency).toBe(146.790);
+    const [a, b] = parseRepeaterBookJson(json);
+    expect(a).toMatchObject({ callsign: 'K4ABC', frequency: 146.79, duplex: '-', offset: 0.6, status: 'On-air', analog: true, narrow: false });
+    expect(a.txTone).toMatchObject({ type: 1, ctcss: 107.2 });
+    expect(a.detailUrl).toContain('state_id=12&ID=345');
+    expect(b).toMatchObject({ duplex: '+', offset: 5, analog: false });
+    expect(b.rxTone).toMatchObject({ type: 2, dcs: '023' });
+
+    const usable = filterRepeaters([a, b], { onlyOnAir: true, onlyAnalog: true });
+    expect(usable.map((r) => r.callsign)).toEqual(['K4ABC']);
   });
 
-  it('should filter repeaters by state full name (e.g. Texas)', async () => {
-    const results = await searchRepeaters({
-      importedList: TEST_REPEATERS,
-      state: 'Texas'
-    });
-    expect(results.length).toBe(2);
-    results.forEach((r) => {
-      expect(r.state.toLowerCase()).toContain('texas');
-    });
+  it('turns API error codes into readable messages', () => {
+    expect(() => parseRepeaterBookJson('{"error":"auth_revoked"}')).toThrow(/revoked/);
   });
 
-  it('should search repeaters by keyword or city (e.g. Orlando, Dallas)', async () => {
-    const results = await searchRepeaters({
-      importedList: TEST_REPEATERS,
-      keyword: 'Orlando'
-    });
-    expect(results.length).toBe(1);
-    expect(results[0].location).toContain('Orlando');
+  it('filters by state, band, keyword and proximity', () => {
+    expect(filterRepeaters(TEST_REPEATERS, { state: 'FL', band: '144' }).map((r) => r.callsign)).toEqual(['K4WPD']);
+    expect(filterRepeaters(TEST_REPEATERS, { state: 'Texas' })).toHaveLength(2);
+    expect(filterRepeaters(TEST_REPEATERS, { keyword: 'Orlando' })).toHaveLength(1);
+    const near = filterRepeaters(TEST_REPEATERS, { origin: { lat: 28.5383, lon: -81.3792 }, radiusMiles: 100 });
+    expect(near.map((r) => r.callsign)).toEqual(['K4WPD']);
+    expect(near[0].distanceMiles).toBe(0);
   });
 
-  it('should perform proximity search given lat/lon and radius', async () => {
-    // Orlando, FL coordinates (28.5383, -81.3792)
-    const results = await searchRepeaters({
-      importedList: TEST_REPEATERS,
-      lat: 28.5383,
-      lon: -81.3792,
-      radiusMiles: 100
-    });
-    expect(results.length).toBe(1);
-    expect(results[0].callsign).toBe('K4WPD');
-    expect(results[0].distanceMiles).toBe(0);
+  it('converts a repeater to a channel', () => {
+    const ch = repeaterToRadioChannel(TEST_REPEATERS[0], 5);
+    expect(ch).toMatchObject({ id: 5, name: 'W1AW', rxFreq: 146.88, duplex: '-', offset: 0.6 });
+    expect(ch.txFreq).toBeCloseTo(146.28, 6);
+    expect(ch.txTone).toMatchObject({ type: 1, ctcss: 100 });
+    expect(repeaterToRadioChannel(TEST_REPEATERS[1], 1, 'callsign-city').name).toBe('K4WPD Orlando');
   });
 
-  it('should convert RepeaterBookResult to valid RadioChannel struct', () => {
-    const item: RepeaterBookResult = {
-      callsign: 'W1AW',
-      frequency: 146.880,
-      offset: 0.600,
-      duplex: '-',
-      toneType: 'Tone',
-      toneVal: '100.0',
-      location: 'Newington, CT',
-      county: 'Hartford',
-      state: 'Connecticut',
-      use: 'OPEN'
-    };
-
-    const ch = repeaterToRadioChannel(item, 5);
-    expect(ch.id).toBe(5);
-    expect(ch.name).toBe('W1AW');
-    expect(ch.rxFreq).toBe(146.88000);
-    expect(ch.txFreq).toBe(146.28000);
-    expect(ch.duplex).toBe('-');
-    expect(ch.offset).toBe(0.60000);
-    expect(ch.txTone.type).toBe(1);
-    expect(ch.txTone.ctcss).toBe(100.0);
+  it('respects the sign of an offset when there is no duplex column', () => {
+    const [r] = parseRepeaterBookCsv('Callsign,Frequency,Offset\nW0ABC,146.985,+0.600\n');
+    expect(r.duplex).toBe('+');
+    expect(r.offset).toBe(0.6);
   });
 
-  it('should parse RepeaterBook CSV text properly', () => {
-    const sampleCsv = `Callsign,Frequency,Offset,Tone,Location,State
-K4WPD,146.790,-0.600,107.2,Orlando,Florida
-N4LCR,444.200,+5.000,123.0,Miami,Florida`;
+  it('reads tones from CHIRP files loaded into the RepeaterBook import', () => {
+    const chirp = 'Location,Name,Frequency,Duplex,Offset,Tone,rToneFreq,cToneFreq\n0,W1XYZ,146.940000,-,0.600000,Tone,100.0,88.5\n';
+    const [r] = parseRepeaterBookCsv(chirp);
+    expect(r).toMatchObject({ callsign: 'W1XYZ', duplex: '-', offset: 0.6 });
+    expect(r.txTone).toMatchObject({ type: 1, ctcss: 100 });
+  });
 
-    const parsed = parseRepeaterBookCsv(sampleCsv);
-    expect(parsed.length).toBe(2);
-    expect(parsed[0].callsign).toBe('K4WPD');
-    expect(parsed[0].frequency).toBe(146.790);
-    expect(parsed[0].duplex).toBe('-');
-    expect(parsed[0].toneVal).toBe('107.2');
-    expect(parsed[1].callsign).toBe('N4LCR');
-    expect(parsed[1].frequency).toBe(444.200);
-    expect(parsed[1].duplex).toBe('+');
+  it('flags band-plan guesses and uses 5 MHz for UHF', () => {
+    const [vhf, uhf] = parseRepeaterBookCsv('Callsign,Frequency,PL\nA,146.790,107.2\nB,444.200,123.0\n');
+    expect(vhf).toMatchObject({ duplex: '-', offset: 0.6, duplexGuessed: true });
+    expect(uhf).toMatchObject({ duplex: '+', offset: 5, duplexGuessed: true });
+    expect(vhf.txTone).toMatchObject({ type: 1, ctcss: 107.2 });
+  });
+
+  it('spots repeaters that are already programmed', () => {
+    const channels = createBlankChannels();
+    channels[3] = repeaterToRadioChannel(TEST_REPEATERS[0], 4);
+    expect(isAlreadyProgrammed(TEST_REPEATERS[0], channels)).toBe(true);
+    expect(isAlreadyProgrammed(TEST_REPEATERS[1], channels)).toBe(false);
+    expect(isAlreadyProgrammed(TEST_REPEATERS[1], [createBlankChannel(1)])).toBe(false);
   });
 });

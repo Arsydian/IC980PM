@@ -6,7 +6,9 @@ import {
   parseToneString,
   encodeToneValue,
   decodeToneValue,
-  formatTone
+  formatTone,
+  toneFromKey,
+  toneKey
 } from '../src/codecs/tone-tables';
 import { ToneSetting } from '../src/types/radio';
 
@@ -43,6 +45,19 @@ describe('CTCSS and DCS Tone Tables & Encoding', () => {
     const dcsI = parseToneString('D023I');
     expect(dcsI.type).toBe(3);
     expect(dcsI.dcs).toBe('023');
+  });
+
+  it('does not misread an invalid DCS code as a CTCSS tone', () => {
+    expect(parseToneString('D128N').type).toBe(0);
+    expect(parseToneString('128I').type).toBe(0);
+    expect(parseToneString('CSQ').type).toBe(0);
+    expect(parseToneString('100').type).toBe(1);
+  });
+
+  it('maps tones to and from select keys', () => {
+    for (const tone of [parseToneString('None'), parseToneString('123.0'), parseToneString('D754I')]) {
+      expect(toneFromKey(toneKey(tone))).toMatchObject({ type: tone.type, ctcss: tone.ctcss, dcs: tone.dcs });
+    }
   });
 
   it('should round-trip encode and decode CTCSS tones', () => {

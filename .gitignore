@@ -1,6 +1,14 @@
 node_modules
 dist
 dist-electron
+release
 *.log
 .DS_Store
 Thumbs.db
+
+# Never commit vendor software, archives or radio backups
+*.exe
+*.rar
+*.zip
+*.ic980bak
+vendor/

@@ -1,17 +1,28 @@
 {
   "name": "ic980-pro-max-programmer",
-  "version": "1.1.0",
-  "description": "Cross-platform RepeaterBook import and programming software for the Hiroyasu IC-980 Pro Max radio",
-  "main": "dist-electron/main.js",
+  "productName": "IC-980 Pro Max Programmer",
+  "version": "1.2.0",
+  "description": "Cross-platform programming software for the Hiroyasu IC-980 Pro Max radio, with RepeaterBook import",
+  "main": "dist-electron/main.cjs",
   "type": "module",
+  "homepage": "https://github.com/Arsydian/IC980PM",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Arsydian/IC980PM.git"
+  },
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "dev:electron": "node scripts/dev-electron.mjs",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json",
+    "build": "npm run typecheck && vite build && node scripts/build-electron.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "electron:dev": "vite --host & electron .",
-    "electron:build": "tsc && vite build && electron-builder"
+    "start": "electron .",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:linux": "npm run build && electron-builder --linux"
   },
   "keywords": [
     "ham-radio",
@@ -22,21 +33,53 @@
     "radio-programming",
     "hiroyasu"
   ],
-  "author": "ReadFree Engineering",
+  "author": "Arsydian",
   "license": "MIT",
-  "dependencies": {
-    "clsx": "^2.1.1",
-    "lucide-react": "^1.16.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "tailwind-merge": "^2.6.0"
+  "build": {
+    "appId": "com.arsydian.ic980pm",
+    "productName": "IC-980 Pro Max Programmer",
+    "copyright": "Copyright © 2026 Arsydian",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "HamRadio",
+      "maintainer": "Arsydian"
+    }
   },
   "devDependencies": {
+    "@types/node": "^24.19.2",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "lucide-react": "^1.16.0",
     "postcss": "^8.4.49",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",
     "vite": "^6.1.0",

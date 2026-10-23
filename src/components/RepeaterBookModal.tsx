@@ -1,709 +1,372 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { RepeaterBookResult, RadioChannel } from '../types/radio';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Compass, ExternalLink, Key, Navigation, Search, Upload } from 'lucide-react';
+import { RadioChannel, RepeaterBookResult } from '../types/radio';
+import { getRegion, REGIONS, RegionId } from '../codecs/band-plans';
+import { applyPlacement, planPlacement, PlacementMode } from '../codecs/placement';
+import { formatTone } from '../codecs/tone-tables';
 import {
-  searchRepeaters,
-  repeaterToRadioChannel,
+  CANADIAN_PROVINCES,
+  fetchRepeaterBook,
+  filterRepeaters,
+  isAlreadyProgrammed,
+  NameFormat,
   parseRepeaterBookCsv,
-  US_STATE_MAP
+  RB_ATTRIBUTION,
+  RB_HOME,
+  RB_TOKEN_PAGE,
+  repeaterToRadioChannel,
+  US_STATES
 } from '../services/repeaterbook';
-import {
-  X,
-  Search,
-  MapPin,
-  CheckSquare,
-  Square,
-  Download,
-  Compass,
-  Navigation,
-  Upload,
-  Key,
-  RotateCcw,
-  AlertCircle
-} from 'lucide-react';
+import { desktop, storage } from '../platform';
+import { PlacementPicker } from './PlacementPicker';
+import { Button, Field, inputClass, Modal, selectClass } from './ui';
+
+type Row = RepeaterBookResult & { key: number };
 
 interface RepeaterBookModalProps {
-  isOpen: boolean;
+  open: boolean;
   onClose: () => void;
-  onImport: (channelsToInsert: RadioChannel[], targetStartIndex: number, mode: 'append' | 'startAt' | 'overwrite') => void;
-  existingChannels: RadioChannel[];
+  channels: RadioChannel[];
+  region: RegionId;
+  onImport: (next: RadioChannel[], count: number) => void;
 }
 
-export const RepeaterBookModal: React.FC<RepeaterBookModalProps> = ({
-  isOpen,
-  onClose,
-  onImport,
-  existingChannels
-}) => {
-  // Search parameters
-  const [activeTab, setActiveTab] = useState<'directory' | 'proximity'>('directory');
-  const [keyword, setKeyword] = useState('');
+const CONTACT_KEY = 'ic980.rbContact';
+const rbRegions = REGIONS.filter((r) => r.repeaterBook);
+
+const RepeaterBookForm: React.FC<Omit<RepeaterBookModalProps, 'open'>> = ({ onClose, channels, region: appRegion, onImport }) => {
+  const [region, setRegion] = useState<RegionId>(getRegion(appRegion).repeaterBook ? appRegion : 'US');
   const [state, setState] = useState('');
-  const [band, setBand] = useState('all');
-  const [proximityLat, setProximityLat] = useState<string>('');
-  const [proximityLon, setProximityLon] = useState<string>('');
-  const [radiusMiles, setRadiusMiles] = useState<number>(50);
-  const [isLocating, setIsLocating] = useState(false);
+  const [county, setCounty] = useState('');
+  const [city, setCity] = useState('');
 
-  // API Token settings
-  const [showApiToken, setShowApiToken] = useState(false);
-  const [apiToken, setApiToken] = useState(() => {
-    try {
-      return localStorage.getItem('repeaterbook_api_token') || '';
-    } catch {
-      return '';
-    }
-  });
+  const [results, setResults] = useState<Row[]>([]);
+  const [source, setSource] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Search execution & feedback state
-  const [results, setResults] = useState<RepeaterBookResult[]>([]);
-  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
-  const [isSearching, setIsSearching] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
-  const [searchSummary, setSearchSummary] = useState('');
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [band, setBand] = useState<'all' | '144' | '440'>('all');
+  const [keyword, setKeyword] = useState('');
+  const [onlyOnAir, setOnlyOnAir] = useState(true);
+  const [onlyAnalog, setOnlyAnalog] = useState(true);
+  const [hideProgrammed, setHideProgrammed] = useState(true);
+  const [lat, setLat] = useState('');
+  const [lon, setLon] = useState('');
+  const [radius, setRadius] = useState(50);
+  const [locating, setLocating] = useState(false);
 
-  // Placement options
-  const [placementMode, setPlacementMode] = useState<'append' | 'startAt' | 'overwrite'>('append');
-  const [startChannel, setStartChannel] = useState<number>(1);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [nameFormat, setNameFormat] = useState<NameFormat>('callsign');
+  const [mode, setMode] = useState<PlacementMode>('appendEmpty');
+  const [startAt, setStartAt] = useState(1);
 
-  // File input ref for direct CSV import
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showKey, setShowKey] = useState(false);
+  const [hasToken, setHasToken] = useState<boolean | null>(null);
+  const [tokenInput, setTokenInput] = useState('');
+  const [tokenMessage, setTokenMessage] = useState<string | null>(null);
+  const [contact, setContact] = useState(() => storage.get(CONTACT_KEY) ?? '');
 
   useEffect(() => {
-    if (apiToken) {
-      try {
-        localStorage.setItem('repeaterbook_api_token', apiToken);
-      } catch {
-        // Ignore local storage error
-      }
-    }
-  }, [apiToken]);
+    void desktop?.hasRepeaterBookToken().then(setHasToken);
+  }, []);
+  useEffect(() => {
+    storage.set(CONTACT_KEY, contact);
+  }, [contact]);
 
-  if (!isOpen) return null;
+  const origin = lat && lon && Number.isFinite(parseFloat(lat)) && Number.isFinite(parseFloat(lon))
+    ? { lat: parseFloat(lat), lon: parseFloat(lon) }
+    : undefined;
 
-  const handleSearch = async () => {
-    setIsSearching(true);
-    setStatusMessage(null);
-    try {
-      const lat = proximityLat ? parseFloat(proximityLat) : undefined;
-      const lon = proximityLon ? parseFloat(proximityLon) : undefined;
+  const visible = useMemo(() => {
+    const filtered = filterRepeaters(results, {
+      band,
+      keyword,
+      onlyOnAir,
+      onlyAnalog,
+      state: region === 'CA' ? state : undefined,
+      origin,
+      radiusMiles: origin ? radius : undefined
+    });
+    return hideProgrammed ? filtered.filter((r) => !isAlreadyProgrammed(r, channels)) : filtered;
+  }, [results, band, keyword, onlyOnAir, onlyAnalog, region, state, origin?.lat, origin?.lon, radius, hideProgrammed, channels]);
 
-      const summaryParts: string[] = [];
-      if (activeTab === 'directory') {
-        if (state.trim()) summaryParts.push(`State: ${state.trim().toUpperCase()}`);
-      } else {
-        if (lat !== undefined && lon !== undefined) {
-          summaryParts.push(`Proximity: ${lat.toFixed(3)}, ${lon.toFixed(3)} (±${radiusMiles}mi)`);
-        }
-      }
-      if (band !== 'all') summaryParts.push(`Band: ${band === '144' ? '2m (144MHz)' : '70cm (440MHz)'}`);
-      if (keyword.trim()) summaryParts.push(`"${keyword.trim()}"`);
+  const chosen = visible.filter((r) => selected.has(r.key));
+  const plan = useMemo(() => planPlacement(channels, chosen.length, mode, startAt), [channels, chosen.length, mode, startAt]);
 
-      const summary = summaryParts.length > 0 ? summaryParts.join(' | ') : 'All Repeaters';
-      setSearchSummary(summary);
-
-      const res = await searchRepeaters({
-        state: activeTab === 'directory' ? (state.trim() || undefined) : undefined,
-        band: band !== 'all' ? band : undefined,
-        keyword: keyword.trim() || undefined,
-        lat: activeTab === 'proximity' ? lat : undefined,
-        lon: activeTab === 'proximity' ? lon : undefined,
-        radiusMiles: activeTab === 'proximity' && lat !== undefined && lon !== undefined ? radiusMiles : undefined,
-        apiToken: apiToken.trim() || undefined
-      });
-
-      setResults(res);
-      setHasSearched(true);
-      // Select all by default
-      setSelectedIndices(new Set(res.map((_, i) => i)));
-    } catch (err: any) {
-      console.error('Repeater search failed:', err);
-      setStatusMessage(`Search error: ${err.message || 'Failed to query repeaters'}`);
-      setResults([]);
-      setHasSearched(true);
-    } finally {
-      setIsSearching(false);
-    }
+  const loadResults = (list: RepeaterBookResult[], label: string) => {
+    const rows = list.map((r, key) => ({ ...r, key }));
+    setResults(rows);
+    setSource(label);
+    setSelected(new Set(rows.filter((r) => !isAlreadyProgrammed(r, channels)).map((r) => r.key)));
   };
 
-  const handleShowAll = async () => {
-    setState('');
-    setKeyword('');
-    setBand('all');
-    setProximityLat('');
-    setProximityLon('');
-    setIsSearching(true);
-    setStatusMessage(null);
-    try {
-      const res = await searchRepeaters({ band: 'all' });
-      setResults(res);
-      setHasSearched(true);
-      setSearchSummary('Complete North American Directory');
-      setSelectedIndices(new Set(res.map((_, i) => i)));
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const handleUseLocation = () => {
-    if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser or environment.');
+  const search = async () => {
+    setError(null);
+    if (region === 'US' && !state) {
+      setError('Pick a state — RepeaterBook asks apps to keep requests narrow.');
       return;
     }
-    setIsLocating(true);
+    if (!contact.trim()) {
+      setShowKey(true);
+      setError('Add your callsign and email in the key settings; RepeaterBook requires contact details in each request.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const list = await fetchRepeaterBook({ region, state: state || undefined, county: county || undefined, city: city || undefined }, contact.trim());
+      loadResults(list, `${getRegion(region).name}${state ? ` · ${state}` : ''}${county ? ` · ${county}` : ''}${city ? ` · ${city}` : ''}`);
+    } catch (err: any) {
+      setError(err?.message ?? String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const loadCsv = async (file: File) => {
+    setError(null);
+    try {
+      const list = parseRepeaterBookCsv(await file.text(), region);
+      if (list.length === 0) throw new Error('No repeaters found in that file. Expected a RepeaterBook, CHIRP or OEM CSV export.');
+      loadResults(list, file.name);
+    } catch (err: any) {
+      setError(err?.message ?? String(err));
+    }
+  };
+
+  const saveToken = async () => {
+    if (!desktop) return;
+    try {
+      const res = await desktop.setRepeaterBookToken(tokenInput);
+      setTokenInput('');
+      setHasToken(res.stored !== 'none');
+      setTokenMessage(res.stored === 'secure' ? 'Token saved in your system\'s encrypted storage.'
+        : res.stored === 'session' ? 'No encrypted storage on this system: the token is kept until you close the app.'
+          : 'Token removed.');
+    } catch (err: any) {
+      setTokenMessage(err?.message ?? String(err));
+    }
+  };
+
+  const locate = () => {
+    if (!navigator.geolocation) {
+      setError('Location is not available here. Type your latitude and longitude.');
+      return;
+    }
+    setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setProximityLat(pos.coords.latitude.toFixed(4));
-        setProximityLon(pos.coords.longitude.toFixed(4));
-        setIsLocating(false);
-        setActiveTab('proximity');
+        setLat(pos.coords.latitude.toFixed(4));
+        setLon(pos.coords.longitude.toFixed(4));
+        setLocating(false);
       },
       (err) => {
-        setIsLocating(false);
-        alert(`Could not acquire location: ${err.message}. Please enter coordinates manually.`);
+        setLocating(false);
+        setError(`Could not get your location (${err.message}). Type your latitude and longitude instead.`);
       },
-      { timeout: 10000, enableHighAccuracy: true }
+      { timeout: 10000 }
     );
   };
 
-  const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-      const imported = parseRepeaterBookCsv(text);
-      if (imported.length === 0) {
-        alert('No valid repeaters found in the selected CSV file. Please ensure it contains standard RepeaterBook or CHIRP headers.');
-        return;
-      }
-      setResults(imported);
-      setHasSearched(true);
-      setSearchSummary(`Imported from ${file.name}`);
-      setSelectedIndices(new Set(imported.map((_, i) => i)));
-      setStatusMessage(`Successfully loaded ${imported.length} repeaters from ${file.name}`);
-    } catch (err: any) {
-      alert(`Error reading CSV file: ${err.message}`);
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+  const toggle = (key: number) => {
+    const next = new Set(selected);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setSelected(next);
   };
+  const allVisibleSelected = visible.length > 0 && visible.every((r) => selected.has(r.key));
 
-  const handleToggleSelectAll = () => {
-    if (selectedIndices.size === results.length) {
-      setSelectedIndices(new Set());
-    } else {
-      setSelectedIndices(new Set(results.map((_, i) => i)));
-    }
-  };
-
-  const handleToggleRow = (index: number) => {
-    const next = new Set(selectedIndices);
-    if (next.has(index)) next.delete(index);
-    else next.add(index);
-    setSelectedIndices(next);
-  };
-
-  const handleCommitImport = () => {
-    const selected = results.filter((_, i) => selectedIndices.has(i));
-    if (selected.length === 0) return;
-
-    let targetIdx = startChannel;
-    if (placementMode === 'append') {
-      const firstEmpty = existingChannels.findIndex((c) => c.rxFreq <= 0);
-      targetIdx = firstEmpty !== -1 ? firstEmpty + 1 : 1;
-    }
-
-    const convertedChannels = selected.map((r, i) =>
-      repeaterToRadioChannel(r, targetIdx + i)
-    );
-
-    onImport(convertedChannels, targetIdx, placementMode);
+  const doImport = () => {
+    const incoming = chosen.map((r) => repeaterToRadioChannel(r, 1, nameFormat));
+    onImport(applyPlacement(channels, incoming, plan), plan.targets.filter((t) => t !== -1).length);
     onClose();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSearch();
-    }
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-      <div className="flex flex-col w-full max-w-4xl max-h-[90vh] bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden">
-        {/* Modal Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-900/90">
-          <div className="flex items-center gap-2.5">
-            <div className="p-1.5 bg-sky-500/10 text-sky-400 rounded-lg border border-sky-500/20">
-              <Compass className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
-                RepeaterBook Proximity & Directory Import
-                <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/30">
-                  50-State & Live API
-                </span>
-              </h2>
-              <p className="text-xs text-slate-400">
-                Find nearby VHF/UHF repeaters and program directly into IC-980 Pro Max memory channels
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowApiToken(!showApiToken)}
-              title="Configure RepeaterBook API Token"
-              className={`p-1.5 rounded-lg border transition ${
-                apiToken
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                  : 'text-slate-400 hover:text-slate-200 border-slate-800 hover:bg-slate-800'
-              }`}
-            >
-              <Key className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              title="Import RepeaterBook or CHIRP CSV file"
-              className="p-1.5 text-slate-400 hover:text-slate-200 border border-slate-800 hover:bg-slate-800 rounded-lg transition"
-            >
-              <Upload className="w-4 h-4" />
-            </button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleCsvUpload}
-              accept=".csv"
-              className="hidden"
-            />
-            <button
-              onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition"
-            >
-              <X className="w-4 h-4" />
-            </button>
+    <Modal
+      title="RepeaterBook import"
+      subtitle={<>Find repeaters and add them to channels. <a href={RB_HOME} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">{RB_ATTRIBUTION}</a></>}
+      icon={<Compass className="w-5 h-5" />}
+      width="max-w-6xl"
+      onClose={onClose}
+      footer={
+        <div className="w-full flex flex-wrap items-end justify-between gap-3">
+          <PlacementPicker mode={mode} startAt={startAt} onModeChange={setMode} onStartAtChange={setStartAt} plan={plan} />
+          <div className="flex items-center gap-2 text-xs">
+            <label className="flex items-center gap-1.5 text-slate-400">
+              Name
+              <select value={nameFormat} onChange={(e) => setNameFormat(e.target.value as NameFormat)} className="bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-slate-200">
+                <option value="callsign">Callsign</option>
+                <option value="callsign-city">Callsign + city</option>
+                <option value="city">City</option>
+              </select>
+            </label>
+            <Button variant="success" disabled={chosen.length === 0 || plan.dropped === chosen.length} onClick={doImport}>
+              Import {chosen.length} repeater(s)
+            </Button>
           </div>
         </div>
-
-        {/* Optional Live API Token Drawer */}
-        {showApiToken && (
-          <div className="px-5 py-3 bg-slate-950 border-b border-slate-800 text-xs flex flex-col md:flex-row items-center justify-between gap-3">
-            <div className="flex-1">
-              <label className="block text-slate-300 font-medium mb-1">
-                RepeaterBook API Application Token (Optional)
+      }
+    >
+      <div className="text-xs">
+        {/* Search */}
+        <div className="p-4 border-b border-slate-800 bg-slate-950/60 space-y-3">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
+            <Field label="Country">
+              <select className={selectClass} value={region} onChange={(e) => { setRegion(e.target.value as RegionId); setState(''); }}>
+                {rbRegions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+            </Field>
+            <Field label={region === 'US' ? 'State' : region === 'CA' ? 'Province' : 'Region (optional)'}>
+              {region === 'US' ? (
+                <select className={selectClass} value={state} onChange={(e) => setState(e.target.value)}>
+                  <option value="">Choose…</option>
+                  {US_STATES.map((s) => <option key={s.abbr} value={s.abbr}>{s.name}</option>)}
+                </select>
+              ) : region === 'CA' ? (
+                <select className={selectClass} value={state} onChange={(e) => setState(e.target.value)}>
+                  <option value="">All provinces</option>
+                  {CANADIAN_PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              ) : (
+                <input className={inputClass} value={state} onChange={(e) => setState(e.target.value)} placeholder="e.g. England" />
+              )}
+            </Field>
+            {region === 'US' && (
+              <Field label="County (optional)"><input className={inputClass} value={county} onChange={(e) => setCounty(e.target.value)} /></Field>
+            )}
+            <Field label="City (optional)"><input className={inputClass} value={city} onChange={(e) => setCity(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} /></Field>
+            <div className="flex gap-2 md:col-span-2">
+              <Button variant="primary" onClick={search} disabled={busy || !desktop} title={desktop ? 'Query RepeaterBook' : 'Live search runs in the desktop app'}>
+                <Search className={`w-3.5 h-3.5 ${busy ? 'animate-spin' : ''}`} />{busy ? 'Searching…' : 'Search RepeaterBook'}
+              </Button>
+              <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-slate-800 border border-slate-700 text-slate-200 cursor-pointer hover:bg-slate-700" title="RepeaterBook, CHIRP or OEM CSV">
+                <Upload className="w-3.5 h-3.5" />Load CSV
+                <input type="file" accept=".csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void loadCsv(f); e.target.value = ''; }} />
               </label>
-              <input
-                type="password"
-                placeholder="Paste free token (rbuapp_...)"
-                value={apiToken}
-                onChange={(e) => setApiToken(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1 text-slate-200 font-mono focus:outline-none focus:ring-1 focus:ring-sky-500"
-              />
-            </div>
-            <div className="text-[11px] text-slate-400 max-w-sm">
-              RepeaterBook offers free user API tokens at{' '}
-              <a
-                href="https://www.repeaterbook.com/user/api_apps.php"
-                target="_blank"
-                rel="noreferrer"
-                className="text-sky-400 hover:underline"
-              >
-                repeaterbook.com
-              </a>
-              . When left empty, searches query the built-in 50-state verified database.
+              <Button onClick={() => setShowKey(!showKey)} title="RepeaterBook token and contact details" className={hasToken ? 'text-emerald-400' : ''}>
+                <Key className="w-3.5 h-3.5" />
+              </Button>
             </div>
           </div>
-        )}
 
-        {/* Tab Headers: Directory vs Proximity */}
-        <div className="flex items-center gap-1 px-4 pt-2.5 bg-slate-950/80 border-b border-slate-800/80 text-xs">
-          <button
-            onClick={() => setActiveTab('directory')}
-            className={`px-3 py-1.5 font-medium rounded-t-lg transition border-t border-x ${
-              activeTab === 'directory'
-                ? 'bg-slate-900 text-sky-400 border-slate-800'
-                : 'text-slate-400 border-transparent hover:text-slate-200'
-            }`}
-          >
-            Directory Search (State / Region)
-          </button>
-          <button
-            onClick={() => setActiveTab('proximity')}
-            className={`flex items-center gap-1 px-3 py-1.5 font-medium rounded-t-lg transition border-t border-x ${
-              activeTab === 'proximity'
-                ? 'bg-slate-900 text-sky-400 border-slate-800'
-                : 'text-slate-400 border-transparent hover:text-slate-200'
-            }`}
-          >
-            <Navigation className="w-3.5 h-3.5" />
-            <span>Proximity Radius (GPS / Coordinates)</span>
-          </button>
-        </div>
+          {!desktop && <p className="text-amber-300">Live search runs in the desktop app; browsers block requests to RepeaterBook. Here you can load a CSV downloaded from RepeaterBook.</p>}
 
-        {/* Search Controls */}
-        <div className="p-4 bg-slate-950/60 border-b border-slate-800 text-xs">
-          {activeTab === 'directory' ? (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              <div>
-                <label className="block text-slate-400 mb-1 font-medium">State / Region</label>
-                <input
-                  type="text"
-                  list="us-states-list"
-                  placeholder="e.g. FL, NY, Texas, CA"
-                  value={state}
-                  onChange={(e) => setState(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500 font-mono"
-                />
-                <datalist id="us-states-list">
-                  {Object.entries(US_STATE_MAP).map(([abbr, name]) => (
-                    <option key={abbr} value={abbr}>
-                      {name} ({abbr})
-                    </option>
-                  ))}
-                </datalist>
-              </div>
-
-              <div>
-                <label className="block text-slate-400 mb-1 font-medium">Frequency Band</label>
-                <select
-                  value={band}
-                  onChange={(e) => setBand(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                >
-                  <option value="all">All Bands (2m & 70cm)</option>
-                  <option value="144">144 MHz (2m VHF)</option>
-                  <option value="440">440 MHz (70cm UHF)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-slate-400 mb-1 font-medium">Keyword / Callsign / City</label>
-                <input
-                  type="text"
-                  placeholder="Callsign, city, or frequency"
-                  value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500 font-mono"
-                />
-              </div>
-
-              <div className="flex items-end gap-2">
-                <button
-                  onClick={handleSearch}
-                  disabled={isSearching}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-1.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-medium rounded transition shadow-sm"
-                >
-                  <Search className={`w-3.5 h-3.5 ${isSearching ? 'animate-spin' : ''}`} />
-                  <span>{isSearching ? 'Searching...' : 'Search Repeaters'}</span>
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-              <div>
-                <label className="block text-slate-400 mb-1 font-medium">Latitude</label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  placeholder="e.g. 28.5383"
-                  value={proximityLat}
-                  onChange={(e) => setProximityLat(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500 font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-400 mb-1 font-medium">Longitude</label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  placeholder="e.g. -81.3792"
-                  value={proximityLon}
-                  onChange={(e) => setProximityLon(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500 font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-400 mb-1 font-medium">Radius (Miles)</label>
-                <select
-                  value={radiusMiles}
-                  onChange={(e) => setRadiusMiles(parseInt(e.target.value) || 50)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                >
-                  <option value={15}>15 Miles</option>
-                  <option value={30}>30 Miles</option>
-                  <option value={50}>50 Miles</option>
-                  <option value={75}>75 Miles</option>
-                  <option value={100}>100 Miles</option>
-                  <option value={200}>200 Miles</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-slate-400 mb-1 font-medium">Band</label>
-                <select
-                  value={band}
-                  onChange={(e) => setBand(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                >
-                  <option value="all">All Bands</option>
-                  <option value="144">144 MHz (2m)</option>
-                  <option value="440">440 MHz (70cm)</option>
-                </select>
-              </div>
-
-              <div className="flex items-end gap-2">
-                <button
-                  type="button"
-                  onClick={handleUseLocation}
-                  disabled={isLocating}
-                  title="Detect coordinates from GPS or Browser"
-                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 rounded transition"
-                >
-                  <Navigation className={`w-3.5 h-3.5 ${isLocating ? 'animate-spin' : ''}`} />
-                </button>
-                <button
-                  onClick={handleSearch}
-                  disabled={isSearching}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-medium rounded transition shadow-sm"
-                >
-                  <Search className={`w-3.5 h-3.5 ${isSearching ? 'animate-spin' : ''}`} />
-                  <span>{isSearching ? 'Searching...' : 'Search Nearby'}</span>
-                </button>
-              </div>
+          {showKey && (
+            <div className="grid md:grid-cols-2 gap-3 p-3 rounded-lg border border-slate-800 bg-slate-900">
+              <Field label="Your callsign and email" hint="Sent to RepeaterBook with every request (their API rules require a contact). Stored on this computer.">
+                <input className={inputClass} value={contact} onChange={(e) => setContact(e.target.value)} placeholder="W1ABC; you@example.com" />
+              </Field>
+              <Field
+                label={`RepeaterBook app token ${hasToken ? '(saved)' : ''}`}
+                hint={<>Generate a personal token for this app at <a className="text-sky-400 hover:underline" href={RB_TOKEN_PAGE} target="_blank" rel="noreferrer">RepeaterBook API Apps</a>. It is shown once; paste it here. Leave empty and save to remove it.</>}
+              >
+                <div className="flex gap-2">
+                  <input type="password" className={inputClass} value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} placeholder={hasToken ? '••••••• (saved)' : 'rbuapp_…'} disabled={!desktop} />
+                  <Button onClick={saveToken} disabled={!desktop}>Save</Button>
+                </div>
+                {tokenMessage && <span className="block mt-1 text-emerald-300">{tokenMessage}</span>}
+              </Field>
             </div>
           )}
-
-          {/* Quick Filter Bar & Status */}
-          <div className="flex flex-wrap items-center justify-between gap-2 mt-2.5 pt-2 border-t border-slate-800/60 text-[11px] text-slate-400">
-            <div className="flex items-center gap-2">
-              <span>Popular States:</span>
-              {['FL', 'TX', 'CA', 'NY', 'OH', 'GA', 'PA', 'WA', 'IL'].map((st) => (
-                <button
-                  key={st}
-                  type="button"
-                  onClick={() => {
-                    setState(st);
-                    setActiveTab('directory');
-                  }}
-                  className={`px-1.5 py-0.5 rounded font-mono border transition ${
-                    state.toUpperCase() === st
-                      ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                      : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
-                  }`}
-                >
-                  {st}
-                </button>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={handleShowAll}
-              className="text-sky-400 hover:text-sky-300 hover:underline flex items-center gap-1"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>Browse All Repeaters ({50}+ US States)</span>
-            </button>
-          </div>
+          {error && <p className="text-rose-300">{error}</p>}
         </div>
 
-        {/* Results Banner if searched */}
-        {hasSearched && (
-          <div className="flex items-center justify-between px-5 py-2 bg-slate-900 border-b border-slate-800 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400">Search Filter:</span>
-              <span className="font-medium text-slate-200">{searchSummary}</span>
-              <span className="px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20 font-mono text-[11px]">
-                {results.length} found
-              </span>
+        {/* Filters */}
+        {results.length > 0 && (
+          <div className="flex flex-wrap items-end gap-3 px-4 py-3 border-b border-slate-800">
+            <Field label="Band">
+              <select className={selectClass} value={band} onChange={(e) => setBand(e.target.value as typeof band)}>
+                <option value="all">2 m and 70 cm</option>
+                <option value="144">2 m only</option>
+                <option value="440">70 cm only</option>
+              </select>
+            </Field>
+            <Field label="Keyword"><input className={inputClass} value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Callsign, city, frequency" /></Field>
+            <Field label="Near (lat, lon)">
+              <div className="flex gap-1">
+                <input className={`${inputClass} w-24`} value={lat} onChange={(e) => setLat(e.target.value)} placeholder="Lat" />
+                <input className={`${inputClass} w-24`} value={lon} onChange={(e) => setLon(e.target.value)} placeholder="Lon" />
+                <Button onClick={locate} disabled={locating} title="Use my location"><Navigation className={`w-3.5 h-3.5 ${locating ? 'animate-spin' : ''}`} /></Button>
+              </div>
+            </Field>
+            <Field label="Within">
+              <select className={selectClass} value={radius} onChange={(e) => setRadius(parseInt(e.target.value, 10))} disabled={!origin}>
+                {[15, 30, 50, 75, 100, 200].map((m) => <option key={m} value={m}>{m} miles</option>)}
+              </select>
+            </Field>
+            <div className="flex flex-col gap-1 text-slate-300">
+              <label className="flex items-center gap-1.5"><input type="checkbox" checked={onlyOnAir} onChange={(e) => setOnlyOnAir(e.target.checked)} />On-air only</label>
+              <label className="flex items-center gap-1.5"><input type="checkbox" checked={onlyAnalog} onChange={(e) => setOnlyAnalog(e.target.checked)} />FM analog only</label>
+              <label className="flex items-center gap-1.5"><input type="checkbox" checked={hideProgrammed} onChange={(e) => setHideProgrammed(e.target.checked)} />Hide ones already programmed</label>
             </div>
-            {statusMessage && (
-              <span className="text-emerald-400 text-[11px] flex items-center gap-1">
-                <AlertCircle className="w-3.5 h-3.5" />
-                {statusMessage}
-              </span>
-            )}
           </div>
         )}
 
-        {/* Results List */}
-        <div className="flex-1 overflow-auto bg-slate-950 p-2 font-mono text-xs min-h-[220px]">
-          {!hasSearched ? (
-            <div className="flex flex-col items-center justify-center h-56 text-slate-500 gap-3 font-sans">
-              <div className="p-3 bg-slate-900 rounded-full border border-slate-800 text-slate-400">
-                <MapPin className="w-8 h-8 text-sky-400" />
-              </div>
-              <div className="text-center">
-                <p className="text-slate-300 font-medium">Ready to Search Repeaters</p>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Enter a state code (e.g. FL, TX, CA, NY), keyword, or click "Search Repeaters"
-                </p>
-              </div>
-              <div className="flex items-center gap-2 mt-1">
-                <button
-                  onClick={handleSearch}
-                  className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-medium transition shadow-sm"
-                >
-                  Search Current Criteria
-                </button>
-                <button
-                  onClick={handleShowAll}
-                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium border border-slate-700 transition"
-                >
-                  Show All Repeaters
-                </button>
-              </div>
-            </div>
-          ) : results.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-56 text-slate-400 gap-3 font-sans">
-              <div className="p-3 bg-amber-500/10 text-amber-400 rounded-full border border-amber-500/20">
-                <AlertCircle className="w-8 h-8" />
-              </div>
-              <div className="text-center">
-                <p className="text-slate-200 font-medium">No Repeaters Found</p>
-                <p className="text-xs text-slate-500 mt-1 max-w-md">
-                  No repeaters matched {searchSummary ? `"${searchSummary}"` : 'your query'}.
-                  Try searching by 2-letter state code (e.g. FL, TX, CA, NY, OH) or clearing your keywords.
-                </p>
-              </div>
-              <div className="flex items-center gap-2 mt-1">
-                <button
-                  onClick={handleShowAll}
-                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium border border-slate-700 transition"
-                >
-                  Clear Filters & Show All
-                </button>
-              </div>
-            </div>
+        {/* Results */}
+        <div className="min-h-[240px] max-h-[44vh] overflow-auto">
+          {results.length === 0 ? (
+            <div className="p-10 text-center text-slate-500">Search RepeaterBook or load a CSV to see repeaters here.</div>
           ) : (
             <table className="w-full border-collapse text-left">
-              <thead className="sticky top-0 bg-slate-900 text-slate-400 font-semibold border-b border-slate-800 z-10">
+              <thead className="sticky top-0 bg-slate-900 text-slate-400">
                 <tr>
-                  <th className="px-3 py-2 w-10 text-center">
-                    <button
-                      onClick={handleToggleSelectAll}
-                      className="hover:text-sky-400"
-                      title={selectedIndices.size === results.length ? 'Deselect All' : 'Select All'}
-                    >
-                      {selectedIndices.size === results.length && results.length > 0 ? (
-                        <CheckSquare className="w-4 h-4 text-sky-400" />
-                      ) : (
-                        <Square className="w-4 h-4" />
-                      )}
-                    </button>
+                  <th className="px-3 py-2 w-8">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all"
+                      checked={allVisibleSelected}
+                      onChange={() => {
+                        const next = new Set(selected);
+                        visible.forEach((r) => (allVisibleSelected ? next.delete(r.key) : next.add(r.key)));
+                        setSelected(next);
+                      }}
+                    />
                   </th>
                   <th className="px-3 py-2">Callsign</th>
-                  <th className="px-3 py-2">Output (RX)</th>
-                  <th className="px-3 py-2">Duplex</th>
-                  <th className="px-3 py-2">Tone</th>
-                  <th className="px-3 py-2">Location / County</th>
-                  <th className="px-3 py-2">Use</th>
-                  {results.some((r) => r.distanceMiles !== undefined) && (
-                    <th className="px-3 py-2">Distance</th>
-                  )}
+                  <th className="px-3 py-2">Output</th>
+                  <th className="px-3 py-2">Shift</th>
+                  <th className="px-3 py-2">Tone (TX / RX)</th>
+                  <th className="px-3 py-2">Location</th>
+                  <th className="px-3 py-2">Use / status</th>
+                  {origin && <th className="px-3 py-2">Distance</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 font-sans">
-                {results.map((r, idx) => {
-                  const isChecked = selectedIndices.has(idx);
-                  return (
-                    <tr
-                      key={idx}
-                      onClick={() => handleToggleRow(idx)}
-                      className={`hover:bg-slate-900/60 cursor-pointer transition ${
-                        isChecked ? 'bg-sky-950/20 text-slate-200' : 'text-slate-400'
-                      }`}
-                    >
-                      <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => handleToggleRow(idx)}
-                          className="rounded border-slate-700 text-sky-600 focus:ring-0 cursor-pointer"
-                        />
-                      </td>
-                      <td className="px-3 py-2 font-bold text-sky-400 font-mono">{r.callsign}</td>
-                      <td className="px-3 py-2 font-mono text-slate-100">{r.frequency.toFixed(4)} MHz</td>
-                      <td className="px-3 py-2 font-mono">{r.duplex} {r.offset.toFixed(3)}</td>
-                      <td className="px-3 py-2 font-mono text-emerald-400">
-                        {r.toneVal && r.toneVal !== 'None' ? `${r.toneVal} (${r.toneType})` : 'CSQ / None'}
-                      </td>
-                      <td className="px-3 py-2">
-                        {r.location ? `${r.location}, ` : ''}{r.state}
-                        {r.county ? ` (${r.county} Co.)` : ''}
-                      </td>
-                      <td className="px-3 py-2 text-xs">
-                        <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">
-                          {r.use}
-                        </span>
-                      </td>
-                      {r.distanceMiles !== undefined && (
-                        <td className="px-3 py-2 font-mono text-amber-400">{r.distanceMiles} mi</td>
-                      )}
-                    </tr>
-                  );
-                })}
+              <tbody className="divide-y divide-slate-800/60">
+                {visible.map((r) => (
+                  <tr key={r.key} onClick={() => toggle(r.key)} className={`cursor-pointer hover:bg-slate-900/60 ${selected.has(r.key) ? 'text-slate-200 bg-sky-950/20' : 'text-slate-400'}`}>
+                    <td className="px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" aria-label={`Select ${r.callsign}`} checked={selected.has(r.key)} onChange={() => toggle(r.key)} />
+                    </td>
+                    <td className="px-3 py-1.5 font-mono font-semibold text-sky-400">
+                      {r.detailUrl ? (
+                        <a href={r.detailUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 hover:underline">
+                          {r.callsign}<ExternalLink className="w-3 h-3" />
+                        </a>
+                      ) : r.callsign}
+                    </td>
+                    <td className="px-3 py-1.5 font-mono text-slate-100">{r.frequency.toFixed(4)}</td>
+                    <td className="px-3 py-1.5 font-mono" title={r.duplexGuessed ? 'Direction guessed from the band plan — check it' : undefined}>
+                      {r.duplex === 'OFF' ? 'simplex' : r.duplex === 'SPLIT' ? `split ${r.inputFrequency?.toFixed(4) ?? ''}` : `${r.duplex}${r.offset.toFixed(3)}`}
+                      {r.duplexGuessed && <span className="text-amber-400"> ?</span>}
+                    </td>
+                    <td className="px-3 py-1.5 font-mono text-emerald-400">{formatTone(r.txTone)}{r.rxTone.type ? ` / ${formatTone(r.rxTone)}` : ''}</td>
+                    <td className="px-3 py-1.5">{[r.location, r.county && `${r.county} Co.`, r.state].filter(Boolean).join(', ')}</td>
+                    <td className="px-3 py-1.5">{r.use}{r.status ? ` · ${r.status}` : ''}</td>
+                    {origin && <td className="px-3 py-1.5 font-mono text-amber-400">{r.distanceMiles !== undefined ? `${r.distanceMiles} mi` : '—'}</td>}
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}
         </div>
-
-        {/* Import Placement Footer */}
-        <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-3 border-t border-slate-800 bg-slate-900/90 text-xs">
-          <div className="flex items-center gap-3">
-            <span className="text-slate-400 font-medium">Placement:</span>
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="radio"
-                name="placement"
-                checked={placementMode === 'append'}
-                onChange={() => setPlacementMode('append')}
-                className="text-sky-600 focus:ring-0"
-              />
-              <span className="text-slate-300">Append to empty slots</span>
-            </label>
-
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="radio"
-                name="placement"
-                checked={placementMode === 'startAt'}
-                onChange={() => setPlacementMode('startAt')}
-                className="text-sky-600 focus:ring-0"
-              />
-              <span className="text-slate-300">Start at Channel:</span>
-              <input
-                type="number"
-                min={1}
-                max={500}
-                value={startChannel}
-                onChange={(e) => setStartChannel(Math.max(1, parseInt(e.target.value) || 1))}
-                disabled={placementMode !== 'startAt'}
-                className="w-16 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-slate-200 text-center font-mono disabled:opacity-40"
-              />
-            </label>
+        {results.length > 0 && (
+          <div className="px-4 py-2 border-t border-slate-800 text-slate-500">
+            {source}: {results.length} loaded, {visible.length} shown. Results are kept in memory for this session only.
           </div>
-
-          <div className="flex items-center gap-3">
-            <span className="text-slate-400">
-              Selected: <strong className="text-sky-400">{selectedIndices.size}</strong> repeaters
-            </span>
-            <button
-              onClick={handleCommitImport}
-              disabled={selectedIndices.size === 0}
-              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium rounded-lg shadow-sm transition"
-            >
-              <Download className="w-4 h-4" />
-              <span>Import to Radio Channels</span>
-            </button>
-          </div>
-        </div>
+        )}
       </div>
-    </div>
+    </Modal>
   );
 };
+
+export const RepeaterBookModal: React.FC<RepeaterBookModalProps> = ({ open, ...props }) => (open ? <RepeaterBookForm {...props} /> : null);
